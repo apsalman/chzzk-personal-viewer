@@ -7,7 +7,7 @@ $zipPath = Join-Path $PSScriptRoot 'ChzzkViewer-Windows-x64.zip'
 if (Test-Path -LiteralPath $zipPath) { throw "ZIP already exists: $zipPath" }
 # Include runtime files and application source explicitly. Never walk the profile.
 $runtimeFiles = @(
-    'ChzzkViewer.exe', 'chrome_100_percent.pak', 'chrome_200_percent.pak',
+    'ChzzkViewer.exe', 'setup-captions.ps1', 'chrome_100_percent.pak', 'chrome_200_percent.pak',
     'd3dcompiler_47.dll', 'dxcompiler.dll', 'electron_wer.dll', 'ffmpeg.dll',
     'icudtl.dat', 'LICENSE', 'LICENSES.chromium.html', 'resources.pak',
     'snapshot_blob.bin', 'v8_context_snapshot.bin', 'version',
@@ -16,7 +16,7 @@ $runtimeFiles = @(
 $appFiles = @(
     'package.json', 'server.mjs', 'desktop\main.cjs', 'desktop\preload.cjs',
     'desktop\account.cjs', 'desktop\following.cjs', 'desktop\login-return.cjs',
-    'desktop\navigation.cjs', 'desktop\window-settings.cjs', 'desktop\network.cjs', 'desktop\recorder.cjs', 'desktop\vod-download.cjs', 'desktop\viewing-state.cjs', 'desktop\pip-geometry.cjs', 'desktop\pip-preload.cjs', 'public\pip.html', 'public\pip.js', 'public\pip.css', 'public\player-keys.js', 'public\seekbar.js', 'public\seek-preview.js', 'public\live-handoff.js', 'public\capture.js', 'public\vod-chat.js', 'public\vod-download.js', 'public\app.js', 'public\index.html', 'public\style.css',
+    'desktop\navigation.cjs', 'desktop\window-settings.cjs', 'desktop\network.cjs', 'desktop\recorder.cjs', 'desktop\vod-download.cjs', 'desktop\captions.cjs', 'desktop\caption_worker.py', 'desktop\viewing-state.cjs', 'desktop\pip-geometry.cjs', 'desktop\pip-preload.cjs', 'public\pip.html', 'public\pip.js', 'public\pip.css', 'public\player-keys.js', 'public\seekbar.js', 'public\seek-preview.js', 'public\live-handoff.js', 'public\capture.js', 'public\captions.js', 'public\caption-worklet.js', 'public\vod-chat.js', 'public\vod-download.js', 'public\app.js', 'public\index.html', 'public\style.css',
     'public\assets\logo.png', 'public\assets\app.ico', 'public\assets\app.png', 'public\vendor\hls.min.js', 'public\vendor\hls.LICENSE'
 )
 $files = @()
@@ -53,6 +53,8 @@ profile 폴더를 포함하지 마세요.
 다시보기에는 VOD 전체 다운로드 버튼이 표시됩니다. FFmpeg가 필요하며,
 선택한 화질의 전체 영상을 Downloads 폴더에 MP4로 저장합니다.
 Downloads 폴더도 개인 데이터이므로 재배포 시 제외하세요.
+무료 한국어 자동 자막은 setup-captions.ps1로 최초 설치 후 이용하세요.
+Python 3.10 이상이 필요하며 Tiny/Base 모델은 PC에 별도로 다운로드합니다.
 
 기능: 공식 채팅, 팔로우 라이브, 화질 선택, m3u8 주소 편집,
 LIVE 버튼으로 최신 위치 이동, 채팅 경계선 드래그 크기 조절.

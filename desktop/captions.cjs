@@ -1,0 +1,77 @@
+const { EventEmitter } = require('node:events');
+const fs = require('node:fs');
+const path = require('node:path');
+const os = require('node:os');
+const { spawn } = require('node:child_process');
+
+class Captions extends EventEmitter {
+  constructor({ runtime, worker, spawnWorker = spawn } = {}) {
+    super();
+    this.runtime = runtime || path.join(process.env.LOCALAPPDATA || os.homedir(), 'AZZZT', 'captions');
+    this.worker = worker || path.join(__dirname, 'caption_worker.py');
+    this.spawnWorker = spawnWorker;
+    this.python = path.join(this.runtime, 'runtime', 'Scripts', 'python.exe');
+    this.active = false; this.ready = false; this.model = 'base'; this.dropped = 0; this.nextId = 0; this.epoch = 0; this.error = '';
+  }
+  models() { return ['tiny','base'].filter(name => fs.existsSync(path.join(this.runtime, 'models', name, 'model.bin'))); }
+  state() { return { available: fs.existsSync(this.python) && this.models().length > 0, models: this.models(), active: this.active, ready: this.ready, model: this.model, dropped: this.dropped, error: this.error }; }
+  publish() { this.emit('state', this.state()); return this.state(); }
+  start(model = 'base') {
+    this.stop();
+    if (!['tiny','base'].includes(model) || !this.models().includes(model) || !fs.existsSync(this.python)) throw new Error('setup-captions.ps1로 한국어 자막 엔진을 먼저 설치하세요.');
+    this.model = model; this.active = true; this.ready = false; this.dropped = 0; this.error = ''; this.epoch = 0;
+    const child = this.child = this.spawnWorker(this.python, ['-u', this.worker, path.join(this.runtime, 'models', model)], {
+      windowsHide: true, stdio: ['pipe','pipe','pipe'], env: { ...process.env, PYTHONIOENCODING: 'utf-8', HF_HUB_OFFLINE: '1', HF_HUB_DISABLE_TELEMETRY: '1' }
+    });
+    let pending = '';
+    child.stdout.setEncoding('utf8');
+    child.stdin.on('error', () => {}); child.stderr.on('data', () => {});
+    child.stdout.on('data', chunk => {
+      if (this.child !== child) return;
+      pending += chunk.toString('utf8');
+      if (pending.length > 2000000) { this.error = '자막 엔진 응답이 올바르지 않습니다.'; this.stop(); return; }
+      const lines = pending.split(/\r?\n/); pending = lines.pop();
+      for (const line of lines) {
+        let value; try { value = JSON.parse(line); } catch { continue; }
+        if (value.type === 'ready') { clearTimeout(this.startTimer); this.ready = true; this.publish(); }
+        else if (value.type === 'result' || value.type === 'job-error') {
+          const job = this.current;
+          if (!job || value.id !== job.id) continue;
+          clearTimeout(this.jobTimer); this.current = null;
+          if (value.type === 'result' && job.epoch === this.epoch) this.emit('result', { ...value, end: job.end, capturedAt: job.capturedAt, dropped: this.dropped });
+          if (value.type === 'job-error') { this.error = '음성 인식 중 오류가 발생했습니다. 다음 구간을 처리합니다.'; this.publish(); }
+          const next = this.pending; this.pending = null; if (next) this.send(next);
+        } else if (value.type === 'fatal') { this.error = value.message; this.stop(); }
+      }
+    });
+    child.once('error', () => { if (this.child === child) { this.error = 'Python 자막 엔진을 실행하지 못했습니다.'; this.stop(); } });
+    child.once('close', () => { if (this.child === child) { this.error = this.error || '자막 엔진 연결이 종료되었습니다.'; this.stop(); } });
+    this.startTimer = setTimeout(() => { if (this.child === child && !this.ready) { this.error = '자막 모델 로딩 시간이 초과되었습니다.'; this.stop(); } }, 60000);
+    return this.publish();
+  }
+  reset(epoch) {
+    if (!Number.isSafeInteger(epoch) || epoch < 0) return;
+    this.epoch = epoch; this.pending = null;
+  }
+  audio({ pcm, epoch, end, capturedAt } = {}) {
+    if (!this.ready || !this.child || epoch !== this.epoch || !(pcm instanceof ArrayBuffer || ArrayBuffer.isView(pcm)) || !Number.isFinite(end) || !Number.isFinite(capturedAt)) return false;
+    const bytes = pcm instanceof ArrayBuffer ? Buffer.from(pcm) : Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength);
+    if (bytes.length < 64000 || bytes.length > 512000 || bytes.length % 4) return false;
+    const job = { id: ++this.nextId, epoch, end, capturedAt, pcm: bytes.toString('base64') };
+    if (this.current) { if (this.pending) this.dropped++; this.pending = job; this.publish(); }
+    else this.send(job);
+    return true;
+  }
+  send(job) {
+    if (!this.child || !this.ready || job.epoch !== this.epoch) return;
+    this.current = job; this.child.stdin.write(JSON.stringify(job) + '\n');
+    this.jobTimer = setTimeout(() => { this.error = '음성 인식 처리 시간이 초과되었습니다. 더 빠른 Tiny 모델을 선택해 주세요.'; this.stop(); }, 45000);
+  }
+  stop() {
+    clearTimeout(this.startTimer); clearTimeout(this.jobTimer);
+    const child = this.child; this.child = null; this.current = null; this.pending = null; this.active = false; this.ready = false;
+    if (child) { child.stdin.end(); child.kill(); }
+    return this.publish();
+  }
+}
+module.exports = { Captions };

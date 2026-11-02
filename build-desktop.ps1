@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
 $meta = Invoke-RestMethod 'https://registry.npmjs.org/electron/latest'
 $version = $meta.version
@@ -18,6 +18,7 @@ if (-not $expected -or (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Ha
 Expand-Archive -LiteralPath $archive -DestinationPath $output -Force
 Move-Item -LiteralPath (Join-Path $output 'electron.exe') -Destination (Join-Path $output 'ChzzkViewer.exe') -Force
 & (Join-Path $PSScriptRoot 'set-app-icon.ps1') -Executable (Join-Path $output 'ChzzkViewer.exe')
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'setup-captions.ps1') -Destination $output -Force
 $appRoot = Join-Path $output 'resources\app'
 New-Item -ItemType Directory -Force $appRoot | Out-Null
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'desktop'),(Join-Path $PSScriptRoot 'public') -Destination $appRoot -Recurse -Force

@@ -9,6 +9,7 @@ const { readFollowingLives } = require('./following.cjs');
 const { gestureBounds } = require('./pip-geometry.cjs');
 const { Recorder } = require('./recorder.cjs');
 const { VodDownload } = require('./vod-download.cjs');
+const { Captions } = require('./captions.cjs');
 const { normalizeViewingState, readViewingState, saveViewingState } = require('./viewing-state.cjs');
 const { readWindowSettings, fitWindow, saveWindowSettings } = require('./window-settings.cjs');
 
@@ -29,7 +30,7 @@ let chatSession, loggedIn = null, accountBusy = false, accountRevision = 0, acco
 let playerOnly = false, normalWindowBounds, normalWindowMaximized = false;
 let pipWindow;
 let pipGesture;
-let recorder, downloader, captureCommandBusy = false, closingCapture = false;
+let recorder, downloader, captions, captureCommandBusy = false, closingCapture = false;
 const popups = new Set();
 function workAreas() {
   const primary = screen.getPrimaryDisplay();
@@ -160,6 +161,9 @@ app.whenReady().then(async () => {
   const appBase = app.isPackaged ? path.dirname(process.execPath) : root;
   recorder = new Recorder({ root: path.join(appBase, 'Recordings'), base: appBase });
   downloader = new VodDownload({ root: path.join(appBase, 'Downloads'), ffmpeg: recorder.ffmpeg });
+  captions = new Captions();
+  captions.on('state', state => { if (win && !win.isDestroyed()) win.webContents.send('caption:state',state); });
+  captions.on('result', result => { if (win && !win.isDestroyed()) win.webContents.send('caption:result',result); });
   downloader.on('state', state => { if (win && !win.isDestroyed()) win.webContents.send('vod:download-state', state); });
   recorder.on('state', state => { if (win && !win.isDestroyed()) win.webContents.send('capture:state', state); });
   server = createApp({ recorder });
@@ -206,6 +210,14 @@ app.whenReady().then(async () => {
   ipcMain.on('chat:reload', event => { if (trusted(event)) restoreChannelChat(); });
   ipcMain.handle('chat:account', async event => trusted(event) ? refreshAccount() : null);
   ipcMain.handle('capture:state', event => trusted(event) ? recorder.state() : null);
+  ipcMain.handle('caption:state', event => trusted(event) ? captions.state() : null);
+  ipcMain.handle('caption:start', (event, model) => {
+    if (!trusted(event)) return;
+    try { return { state: captions.start(model) }; } catch(error) { return { error: error.message, state: captions.state() }; }
+  });
+  ipcMain.handle('caption:stop', event => trusted(event) ? captions.stop() : null);
+  ipcMain.on('caption:audio', (event, data) => { if (trusted(event)) captions.audio(data); });
+  ipcMain.on('caption:reset', (event, epoch) => { if (trusted(event)) captions.reset(epoch); });
   ipcMain.handle('vod:download-state', event => trusted(event) ? downloader.state() : null);
   ipcMain.handle('vod:download', async (event, action, config = {}) => {
     if (!trusted(event)) return;
@@ -392,6 +404,7 @@ app.whenReady().then(async () => {
     })();
   });
   win.on('closed', () => {
+    captions.stop();
     clearTimeout(accountTimer);
     clearTimeout(mainSaveTimer);
     if (pipWindow && !pipWindow.isDestroyed()) pipWindow.close();
