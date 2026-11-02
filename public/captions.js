@@ -153,6 +153,14 @@
     } catch(error) { enabled = false; disconnect(); await api.captionStop(); lastMetric = ''; state.error = error.message; }
     finally { enabling = false; render(); }
   };
+  el('caption-toggle').title='한국어 자막 켜기/끄기 (C)';
+  document.addEventListener('keydown',event=>{
+    if(event.defaultPrevented||event.repeat||event.isComposing||event.keyCode===229||event.ctrlKey||event.altKey||event.metaKey)return;
+    if(event.code!=='KeyC'&&!['c','C'].includes(event.key))return;
+    if(event.target?.closest?.('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"],[role="combobox"],[role="menu"]'))return;
+    const button=el('caption-toggle');if(button.disabled)return;
+    event.preventDefault();event.stopPropagation();button.click();
+  });
   if (api?.captionState) {
     api.onCaptionState(next => { const justReady = !state.ready && next.ready; render(next); if (justReady) reset(); });
     api.onCaptionResult(result => {
