@@ -7,6 +7,29 @@ let currentOriginalURL = '', sourceRevision = 0, linkDirty = false, lastRequest 
 let resizingPanels = false;
 let playingFragment;
 const video = $('video');
+let vodMode = false;
+let currentVod = null;
+const vodChatElement = document.createElement('div');
+vodChatElement.id = 'vod-chat'; vodChatElement.hidden = true;
+$('desktop-chat-slot').before(vodChatElement);
+const vodChat = window.installVodChat(video, vodChatElement);
+function setVodMode(data) {
+  vodMode = data?.kind === 'vod';
+  currentVod = vodMode ? data : null;
+  video.dataset.vod = String(vodMode);
+  vodChat.open(vodMode ? data.videoId : null, data?.chatEnabled);
+  document.querySelector('.chat-head strong').textContent = vodMode ? '다시보기 채팅' : '실시간 채팅';
+  document.querySelector('.chat-note').textContent = vodMode ? '과거 채팅은 읽기 전용입니다. 탐색하면 해당 시점으로 이동합니다.' : '채팅 창에서 네이버 로그인 후 입력할 수 있습니다.';
+  $('desktop-chat-slot').hidden = vodMode || !window.desktopChat;
+  $('chat-empty').hidden = vodMode || !!window.desktopChat;
+  $('popout').hidden = vodMode; $('chat-reload').hidden = vodMode || !window.desktopChat;
+  $('capture-tools').hidden = vodMode || !window.desktopChat;
+  $('edge').textContent = vodMode ? 'VOD' : 'LIVE';
+  $('live-jump').textContent = vodMode ? 'VOD' : 'LIVE';
+  for (const id of ['edge','live-jump','menu-live']) $(id).disabled = vodMode;
+  requestAnimationFrame(reportChatBounds);
+  window.vodDownloadController?.update();
+}
 const status = (text, error = false) => { $('status').textContent = text; $('status').classList.toggle('error', error); };
 const isDvrSource = url => new URL(url, location.href).pathname.startsWith('/dvr/');
 async function syncSourceLink(url, force = false) {
@@ -92,6 +115,8 @@ async function playSource(url, run, preserveLevels = false, height = null) {
   }
   if (desktopPiP) window.desktopChat.closePiP();
   if (!isDvrSource(url)) syncSourceLink(url, true);
+  const resumeTime = vodMode && preserveLevels && video.readyState >= 1 ? video.currentTime : null;
+  const wasPaused = video.paused;
   hls?.destroy(); hls = null;
   playingFragment = null;
   fixedQuality = height;
@@ -105,18 +130,21 @@ async function playSource(url, run, preserveLevels = false, height = null) {
   $('quality-help').textContent = '';
   $('empty').hidden = true;
   if (window.Hls?.isSupported()) {
-    const instance = hls = new Hls({ lowLatencyMode: false, maxBufferLength: 30, backBufferLength: 30, liveSyncDurationCount: 4 });
+    const instance = hls = new Hls({ lowLatencyMode: false, maxBufferLength: 30, backBufferLength: 30, liveSyncDurationCount: 4, startPosition: resumeTime ?? -1 });
+    if (resumeTime !== null) video.addEventListener('loadedmetadata', () => {
+      if (run === generation && hls === instance) video.currentTime = resumeTime;
+    }, { once: true });
     let mediaRecoveries = 0;
     instance.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
       if (run !== generation || hls !== instance) return;
       if (!preserveLevels) {
         qualityLevels = instance.levels.map(level => ({ height: level.height, frameRate: level.frameRate, bitrate: level.bitrate, url: [...level.url] }));
         configureQuality(instance);
-        if ($('quality').value !== 'auto') { applyQuality(); return; }
+        if ($('quality').value !== 'auto') { queueMicrotask(() => { if (run === generation && hls === instance) applyQuality(); }); return; }
       }
       if (preserveLevels) $('quality-help').textContent = qualityNotice || '자동 또는 원하는 화질로 고정할 수 있습니다.';
       status('연결되었습니다. 자동 재생이 안 되면 영상의 재생 버튼을 눌러 주세요.');
-      video.play().catch(() => status('재생 버튼을 눌러 시청을 시작하세요.'));
+      if (resumeTime === null || !wasPaused) video.play().catch(() => status('재생 버튼을 눌러 시청을 시작하세요.'));
     });
     instance.on(Hls.Events.LEVEL_SWITCHED, (_, data) => {
       if (hls !== instance) return;
@@ -148,8 +176,9 @@ async function openStream(value = $('address').value.trim(), manual = false) {
     const response = await fetch('/api/resolve?url=' + encodeURIComponent(value));
     const data = await response.json();
     if (run !== generation) return;
-    setChat(data.channelId);
     if (!response.ok) throw new Error(data.error);
+    if (!manual) setVodMode(data);
+    if (!vodMode) setChat(data.channelId);
     lastRequest = { value, manual };
     resolved = data;
     if (!manual) {
@@ -196,7 +225,7 @@ function reportChatBounds() {
   const headerBottom = document.fullscreenElement ? 0 : document.querySelector('header').getBoundingClientRect().bottom;
   const top = Math.max(0, headerBottom, r.top), bottom = Math.min(window.innerHeight, r.bottom);
   const visibleMode = fullChat || (!document.fullscreenElement && !document.body.classList.contains('player-only') && !$('layout').classList.contains('no-chat'));
-  window.desktopChat.bounds({ x: r.x, y: top, width: r.width, height: Math.max(0, bottom - top), fullscreenChat: fullChat, visible: visibleMode && !resizingPanels && r.width > 0 });
+  window.desktopChat.bounds({ x: r.x, y: top, width: r.width, height: Math.max(0, bottom - top), fullscreenChat: fullChat, visible: !vodMode && visibleMode && !resizingPanels && r.width > 0 });
 }
 const splitter = $('splitter');
 let panelWidth = Number(localStorage.getItem('chzzk-chat-width')) || 360;
@@ -310,7 +339,7 @@ if (window.desktopChat) {
     try { renderAccount(await (accountState.loggedIn === true ? window.desktopChat.logout() : window.desktopChat.account())); }
     catch { renderAccount({ loggedIn: null, busy: false }); }
   };
-  window.desktopChat.onStatus(text => { document.querySelector('.chat-note').textContent = text; });
+  window.desktopChat.onStatus(text => { if (!vodMode) document.querySelector('.chat-note').textContent = text; });
   new ResizeObserver(reportChatBounds).observe($('desktop-chat-slot'));
   new ResizeObserver(reportChatBounds).observe(document.querySelector('header'));
   window.addEventListener('resize', reportChatBounds);
@@ -319,6 +348,7 @@ if (window.desktopChat) {
   requestAnimationFrame(reportChatBounds);
 }
 function jumpToLive() {
+  if (vodMode) return;
   let target;
   if (video.seekable.length) {
     const last = video.seekable.length - 1;
@@ -387,6 +417,10 @@ document.addEventListener('keydown', event => {
 async function togglePiP() {
   $('player-menu').hidden = true;
   try {
+    if (vodMode && window.desktopChat) {
+      if (document.pictureInPictureElement) return await document.exitPictureInPicture();
+      return await video.requestPictureInPicture();
+    }
     if (window.desktopChat) {
       if (desktopPiP) return window.desktopChat.closePiP();
       if (!video.videoWidth || video.readyState < 1) throw new Error('영상을 재생한 뒤 PiP를 선택해 주세요.');
@@ -430,7 +464,7 @@ document.addEventListener('pointerdown', event => { if (!$('player-menu').contai
 window.addEventListener('blur', () => $('player-menu').hidden = true);
 video.addEventListener('playing', () => {
   if (hls) updateQualityBadge(hls);
-  status('재생 중 · 안정적인 재생을 위해 라이브보다 약간 늦게 표시될 수 있습니다.');
+  status(vodMode ? '다시보기 재생 중 · 채팅은 영상 재생 시각에 맞춰 표시됩니다.' : '재생 중 · 안정적인 재생을 위해 라이브보다 약간 늦게 표시될 수 있습니다.');
 });
 video.addEventListener('waiting', () => status('영상을 버퍼링하는 중…'));
 video.addEventListener('error', () => { if (video.currentSrc) status('영상을 재생할 수 없습니다. 다시 연결을 눌러 주세요.', true); });

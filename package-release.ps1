@@ -16,7 +16,7 @@ $runtimeFiles = @(
 $appFiles = @(
     'package.json', 'server.mjs', 'desktop\main.cjs', 'desktop\preload.cjs',
     'desktop\account.cjs', 'desktop\following.cjs', 'desktop\login-return.cjs',
-    'desktop\navigation.cjs', 'desktop\window-settings.cjs', 'desktop\network.cjs', 'desktop\recorder.cjs', 'desktop\pip-geometry.cjs', 'desktop\pip-preload.cjs', 'public\pip.html', 'public\pip.js', 'public\pip.css', 'public\player-keys.js', 'public\seekbar.js', 'public\live-handoff.js', 'public\capture.js', 'public\app.js', 'public\index.html', 'public\style.css',
+    'desktop\navigation.cjs', 'desktop\window-settings.cjs', 'desktop\network.cjs', 'desktop\recorder.cjs', 'desktop\vod-download.cjs', 'desktop\pip-geometry.cjs', 'desktop\pip-preload.cjs', 'public\pip.html', 'public\pip.js', 'public\pip.css', 'public\player-keys.js', 'public\seekbar.js', 'public\live-handoff.js', 'public\capture.js', 'public\vod-chat.js', 'public\vod-download.js', 'public\app.js', 'public\index.html', 'public\style.css',
     'public\vendor\hls.min.js', 'public\vendor\hls.LICENSE'
 )
 $files = @()
@@ -50,6 +50,9 @@ try {
 profile 폴더를 포함하지 마세요.
 녹화·리플레이는 FFmpeg가 필요합니다. FFmpeg를 설치하거나 tools/ffmpeg.exe에 넣으세요.
 녹화 결과는 Recordings 폴더에 저장되며 이 폴더도 재배포 시 제외하세요.
+다시보기에는 VOD 전체 다운로드 버튼이 표시됩니다. FFmpeg가 필요하며,
+선택한 화질의 전체 영상을 Downloads 폴더에 MP4로 저장합니다.
+Downloads 폴더도 개인 데이터이므로 재배포 시 제외하세요.
 
 기능: 공식 채팅, 팔로우 라이브, 화질 선택, m3u8 주소 편집,
 LIVE 버튼으로 최신 위치 이동, 채팅 경계선 드래그 크기 조절.
@@ -64,7 +67,7 @@ HLS.js 라이선스는 resources/app/public/vendor/hls.LICENSE에 있습니다.
 $check = [IO.Compression.ZipFile]::OpenRead($zipPath)
 try {
     $entries = @($check.Entries.FullName)
-    $forbidden = $entries | Where-Object { $_ -match '(?i)(^|/)(profile|Recordings|\.buffer|\.desktop-profile|\.build-cache)(/|$)|last-address\.json|login-diagnostics|\.log$|preview\.png$|Cookies|Local Storage|Login Data' }
+    $forbidden = $entries | Where-Object { $_ -match '(?i)(^|/)(profile|Recordings|Downloads|\.buffer|\.desktop-profile|\.build-cache)(/|$)|last-address\.json|login-diagnostics|\.log$|preview\.png$|Cookies|Local Storage|Login Data' }
     if ($forbidden) { throw "Unexpected personal data paths in archive: $($forbidden -join ', ')" }
     if ($entries.Count -ne $files.Count + 1) { throw 'Archive entry count mismatch' }
     if ($entries -notcontains 'ChzzkViewer/ChzzkViewer.exe' -or $entries -notcontains 'ChzzkViewer/resources/app/desktop/main.cjs') { throw 'Archive missing app entry points' }

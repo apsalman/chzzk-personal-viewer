@@ -7,6 +7,30 @@ import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import network from './desktop/network.cjs';
 
+export function videoId(value) {
+  try { const u = new URL(value); return u.protocol === 'https:' && u.hostname === 'chzzk.naver.com' && !u.username && !u.password ? u.pathname.match(/^\/video\/(\d+)\/?$/)?.[1] || null : null; } catch { return null; }
+}
+export function vodSources(meta, playback) {
+  const result = [];
+  const add = (url, name = 'HLS') => { if (url && !result.some(s => s.url === url)) result.push({ name, url: mediaURL(url) }); };
+  let rewind = meta.liveRewindPlaybackJson;
+  if (typeof rewind === 'string') { try { rewind = JSON.parse(rewind); } catch { rewind = null; } }
+  for (const item of rewind?.media || []) if (/hls/i.test(item.mediaId || item.protocol || item.path || '')) add(item.path, item.mediaId || 'HLS');
+  for (const period of playback?.period || []) for (const adaptation of period.adaptationSet || []) {
+    add(adaptation.otherAttributes?.m3u);
+  }
+  return result;
+}
+export function vodMediaURL(value, base, signed = new Map()) {
+  const url = new URL(value, base), parent = new URL(base);
+  const replacement = signed.get(url.origin + url.pathname);
+  if (!url.search && replacement) return replacement;
+  // VOD playlists omit the CDN signature on relative children. Preserve only
+  // this known token, within the same CDN directory, never across hosts.
+  if (!url.search && url.origin === parent.origin && url.pathname.startsWith(parent.pathname.slice(0, parent.pathname.lastIndexOf('/') + 1)) && parent.searchParams.has('__gda__')) url.searchParams.set('__gda__', parent.searchParams.get('__gda__'));
+  return url.href;
+}
+
 export function channelId(value) {
   if (/^[a-f\d]{32}$/i.test(value)) return value.toLowerCase();
   try {
@@ -48,16 +72,17 @@ async function upstream(url, headers = {}) {
   throw new Error('영상 서버의 주소 이동이 너무 많습니다.');
 }
 export function createApp({ recorder } = {}) {
-  const sources = new Map(), ids = new Map();
-  function register(value) {
+  const sources = new Map(), ids = new Map(), vodContexts = new Map();
+  function register(value, context) {
     const url = mediaURL(value);
-    if (ids.has(url)) return '/media/' + ids.get(url);
-    if (sources.size > 12000) { const first = sources.keys().next().value; ids.delete(sources.get(first)); sources.delete(first); }
+    if (ids.has(url)) { const id = ids.get(url); if (context) vodContexts.set(id, context); return '/media/' + id; }
+    if (sources.size > 24000) { const first = sources.keys().next().value; ids.delete(sources.get(first)); sources.delete(first); vodContexts.delete(first); }
     const id = randomBytes(16).toString('hex');
     sources.set(id, url); ids.set(url, id);
+    if (context) vodContexts.set(id, context);
     return '/media/' + id;
   }
-  return http.createServer(async (req, res) => {
+  const server = http.createServer(async (req, res) => {
     const json = (status, body) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(body)); };
     try {
       if (!/^127\.0\.0\.1:\d+$/.test(req.headers.host || '')) return json(403, { error: '로컬 주소로 접속해 주세요.' });
@@ -66,6 +91,24 @@ export function createApp({ recorder } = {}) {
       const u = new URL(req.url, 'http://' + req.headers.host);
       if (req.method !== 'GET') return json(405, { error: 'GET만 지원합니다.' });
       if (u.pathname === '/api/health') return json(200, { ok: true });
+      if (u.pathname === '/api/vod-chat') {
+        const id = u.searchParams.get('id'), time = Number(u.searchParams.get('time'));
+        if (!/^\d+$/.test(id || '') || !Number.isSafeInteger(time) || time < 0) return json(400, { error: '잘못된 다시보기 채팅 요청입니다.' });
+        const response = await upstream(`https://api.chzzk.naver.com/service/v1/videos/${id}/chats?playerMessageTime=${time}&previousVideoChatSize=50`);
+        if (!response.ok) return json(response.status, { error: '과거 채팅을 가져오지 못했습니다.' });
+        const data = await response.json();
+        if (data.code !== 200 || !data.content) return json(502, { error: data.message || '과거 채팅이 제공되지 않습니다.' });
+        const normalize = rows => (rows || []).filter(row => row.messageStatusType === 'NORMAL' && Number.isFinite(row.playerMessageTime)).map(row => {
+          let profile; try { profile = typeof row.profile === 'string' ? JSON.parse(row.profile) : row.profile; } catch {}
+          let extras; try { extras = typeof row.extras === 'string' ? JSON.parse(row.extras) : row.extras; } catch {}
+          const emojis = {};
+          for (const [key, value] of Object.entries(extras?.emojis || {})) {
+            try { const url = new URL(value); if (url.protocol === 'https:' && (url.hostname === 'pstatic.net' || url.hostname.endsWith('.pstatic.net'))) emojis[key] = url.href; } catch {}
+          }
+          return { time: row.playerMessageTime, nickname: profile?.nickname || '시청자', text: String(row.content || ''), ...(Object.keys(emojis).length ? { emojis } : {}) };
+        });
+        return json(200, { previous: normalize(data.content.previousVideoChats), messages: normalize(data.content.videoChats), next: data.content.nextPlayerMessageTime });
+      }
       if (u.pathname.startsWith('/dvr/')) {
         const resource = recorder?.resource(u.pathname);
         if (!resource) return json(404, { error: '리플레이 조각이 없거나 보관 기간이 지났습니다.' });
@@ -87,6 +130,27 @@ export function createApp({ recorder } = {}) {
       }
       if (u.pathname === '/api/resolve') {
         const value = (u.searchParams.get('url') || '').trim();
+        const vod = videoId(value);
+        if (vod) {
+          const response = await upstream(`https://api.chzzk.naver.com/service/v3/videos/${vod}`);
+          if (!response.ok) return json(response.status, { error: '다시보기 정보를 가져오지 못했습니다. 공개 여부와 시청 권한을 확인해 주세요.' });
+          const data = await response.json(), meta = data.content;
+          if (data.code !== 200 || !meta) throw new Error(data.message || '다시보기 정보가 없습니다.');
+          let playback;
+          if (!vodSources(meta).length && meta.videoId && meta.inKey) {
+            const result = await upstream(`https://apis.naver.com/neonplayer/vodplay/v1/playback/${encodeURIComponent(meta.videoId)}?key=${encodeURIComponent(meta.inKey)}`);
+            if (!result.ok) throw new Error('다시보기 재생 정보를 가져오지 못했습니다.');
+            playback = await result.json();
+          }
+          const sources = vodSources(meta, playback);
+          if (!sources.length) return json(422, { error: '이 다시보기에서 지원 가능한 HLS 재생 주소를 찾지 못했습니다.' });
+          const signed = new Map();
+          signed.videoId = vod;
+          for (const period of playback?.period || []) for (const adaptation of period.adaptationSet || []) for (const rep of adaptation.representation || []) {
+            if (rep.otherAttributes?.m3u) { const url = new URL(mediaURL(rep.otherAttributes.m3u)); signed.set(url.origin + url.pathname, url.href); }
+          }
+          return json(200, { kind: 'vod', videoId: vod, duration: meta.duration, chatEnabled: meta.videoChatEnabled === true, title: meta.videoTitle, channel: meta.channel?.channelName, channelId: meta.channel?.channelId, sources: sources.map(s => ({ ...s, url: register(s.url, signed) })) });
+        }
         const id = channelId(value);
         if (!id) {
           let direct; try { direct = mediaURL(value); } catch { return json(400, { error: '치지직 방송 주소 또는 지원 CDN의 m3u8 주소를 입력해 주세요.' }); }
@@ -119,7 +183,8 @@ export function createApp({ recorder } = {}) {
           const body = await response.text();
           if (!body.trimStart().startsWith('#EXTM3U')) throw new Error('올바른 HLS 재생 목록이 아닙니다.');
           res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl', 'Cache-Control': 'no-store' });
-          return res.end(rewritePlaylist(body, response.url || target.href, register));
+          const context = vodContexts.get(u.pathname.slice(7));
+          return res.end(rewritePlaylist(body, response.url || target.href, value => register(context ? vodMediaURL(value, response.url || target.href, context) : value, context)));
         }
         const out = { 'Content-Type': type || 'application/octet-stream', 'Cache-Control': 'no-store' };
         for (const key of ['content-range', 'accept-ranges', 'content-length']) if (response.headers.has(key)) out[key] = response.headers.get(key);
@@ -135,6 +200,8 @@ export function createApp({ recorder } = {}) {
         return;
       }
       const files = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/seekbar.js': ['seekbar.js', 'text/javascript'], '/player-keys.js': ['player-keys.js', 'text/javascript'], '/capture.js': ['capture.js', 'text/javascript'], '/live-handoff.js': ['live-handoff.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'], '/pip.html': ['pip.html', 'text/html'], '/pip.js': ['pip.js', 'text/javascript'], '/pip.css': ['pip.css', 'text/css'], '/vendor/hls.min.js': ['vendor/hls.min.js', 'text/javascript'] };
+      files['/vod-chat.js'] = ['vod-chat.js', 'text/javascript'];
+      files['/vod-download.js'] = ['vod-download.js', 'text/javascript'];
       const file = files[u.pathname];
       if (!file) return json(404, { error: '찾을 수 없습니다.' });
       const body = await readFile(new URL('./public/' + file[0], import.meta.url));
@@ -144,6 +211,12 @@ export function createApp({ recorder } = {}) {
       else json(502, { error: error.cause ? '서버 연결에 실패했습니다. 인터넷 연결 및 치지직 접근 가능 여부를 확인해 주세요.' : error.message });
     }
   });
+  server.vodSource = (value, video) => {
+    const id = typeof value === 'string' && value.match(/^\/media\/([a-f\d]{32})$/)?.[1];
+    const source = id && sources.get(id);
+    return source && vodContexts.get(id)?.videoId === video && /\.m3u8$/i.test(new URL(source).pathname) ? value : null;
+  };
+  return server;
 }
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const port = Number(process.env.CHZZK_PORT || 3131);

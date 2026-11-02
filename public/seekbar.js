@@ -5,9 +5,9 @@
     return hours ? `${hours}:${String(minutes).padStart(2,'0')}:${secs}` : `${minutes}:${secs}`;
   }
   function targetAt(start,end,fraction) { return start+Math.max(0,Math.min(1,fraction))*Math.max(0,end-start); }
-  function describePoint(target,current,end) {
+  function describePoint(target,current,end,vod=false) {
     const delta = target-current;
-    return { position:`${timeLabel(target)} · LIVE −${timeLabel(end-target)}`, movement:Math.abs(delta)<.5?'현재 재생 위치':`현재보다 ${Math.round(Math.abs(delta))}초 ${delta<0?'뒤로':'앞으로'}` };
+    return { position:vod?`${timeLabel(target)} / ${timeLabel(end)}`:`${timeLabel(target)} · LIVE −${timeLabel(end-target)}`, movement:Math.abs(delta)<.5?'현재 재생 위치':`현재보다 ${Math.round(Math.abs(delta))}초 ${delta<0?'뒤로':'앞으로'}` };
   }
   function installSeekbar(video) {
     const screen=video.parentElement,doc=video.ownerDocument;
@@ -34,7 +34,7 @@
     function updateTip() {
       if(!hovered&&!dragging)return;
       const {target,fraction,bounds}=hoverPoint();
-      const text=describePoint(target,video.currentTime,bounds.end);
+      const text=describePoint(target,video.currentTime,bounds.end,video.dataset?.vod==='true');
       position.textContent=text.position;movement.textContent=text.movement;tip.hidden=false;
       const width=bar.clientWidth;
       tip.style.left=Math.max(0,Math.min(width-tip.offsetWidth,fraction*width-tip.offsetWidth/2))+'px';
@@ -45,7 +45,7 @@
       const fraction=length>0?Math.max(0,Math.min(1,(video.currentTime-start)/length)):0;
       bar.style.setProperty('--seek-progress',fraction*100+'%');
       bar.setAttribute('aria-valuemin',String(Math.floor(start)));bar.setAttribute('aria-valuemax',String(Math.floor(end)));
-      bar.setAttribute('aria-valuenow',String(Math.floor(video.currentTime)));bar.setAttribute('aria-valuetext',`${timeLabel(video.currentTime)} / ${timeLabel(end)} · 라이브보다 ${Math.max(0,Math.round(end-video.currentTime))}초 전`);
+      bar.setAttribute('aria-valuenow',String(Math.floor(video.currentTime)));bar.setAttribute('aria-valuetext',`${timeLabel(video.currentTime)} / ${timeLabel(end)}${video.dataset?.vod==='true'?'':` · 라이브보다 ${Math.max(0,Math.round(end-video.currentTime))}초 전`}`);
       updateTip();
     }
     function seekAtPointer() {

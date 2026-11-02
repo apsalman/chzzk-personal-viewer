@@ -8,6 +8,7 @@ const { readLoginState, logoutAccount } = require('./account.cjs');
 const { readFollowingLives } = require('./following.cjs');
 const { gestureBounds } = require('./pip-geometry.cjs');
 const { Recorder } = require('./recorder.cjs');
+const { VodDownload } = require('./vod-download.cjs');
 const { readWindowSettings, fitWindow, saveWindowSettings } = require('./window-settings.cjs');
 
 const root = path.resolve(__dirname, '..');
@@ -23,7 +24,7 @@ let chatSession, loggedIn = null, accountBusy = false, accountRevision = 0, acco
 let playerOnly = false, normalWindowBounds, normalWindowMaximized = false;
 let pipWindow;
 let pipGesture;
-let recorder, captureCommandBusy = false, closingCapture = false;
+let recorder, downloader, captureCommandBusy = false, closingCapture = false;
 const popups = new Set();
 function workAreas() {
   const primary = screen.getPrimaryDisplay();
@@ -149,6 +150,8 @@ app.whenReady().then(async () => {
   const { createApp } = await import(pathToFileURL(path.join(root, 'server.mjs')).href);
   const appBase = app.isPackaged ? path.dirname(process.execPath) : root;
   recorder = new Recorder({ root: path.join(appBase, 'Recordings'), base: appBase });
+  downloader = new VodDownload({ root: path.join(appBase, 'Downloads'), ffmpeg: recorder.ffmpeg });
+  downloader.on('state', state => { if (win && !win.isDestroyed()) win.webContents.send('vod:download-state', state); });
   recorder.on('state', state => { if (win && !win.isDestroyed()) win.webContents.send('capture:state', state); });
   server = createApp({ recorder });
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
@@ -193,6 +196,20 @@ app.whenReady().then(async () => {
   ipcMain.on('chat:reload', event => { if (trusted(event)) restoreChannelChat(); });
   ipcMain.handle('chat:account', async event => trusted(event) ? refreshAccount() : null);
   ipcMain.handle('capture:state', event => trusted(event) ? recorder.state() : null);
+  ipcMain.handle('vod:download-state', event => trusted(event) ? downloader.state() : null);
+  ipcMain.handle('vod:download', async (event, action, config = {}) => {
+    if (!trusted(event)) return;
+    try {
+      if (action === 'start') {
+        const source = server.vodSource(config.url, config.videoId);
+        if (!source) throw new Error('재생 중인 다시보기의 화질 주소를 먼저 불러와 주세요.');
+        await downloader.start({ ...config, url: origin + source });
+      } else if (action === 'cancel') await downloader.cancel();
+      else if (action === 'folder') { await fs.promises.mkdir(downloader.state().folder, { recursive: true }); await shell.openPath(downloader.state().folder); }
+      else throw new Error('지원하지 않는 다운로드 작업입니다.');
+      return { state: downloader.state() };
+    } catch(error) { return { error: error.message, state: downloader.state() }; }
+  });
   ipcMain.on('capture:playhead', (event, epoch) => { if (trusted(event)) recorder.markPlayhead(epoch); });
   ipcMain.handle('capture:command', async (event, action, config = {}) => {
     if (!trusted(event) || captureCommandBusy) return { error: '다른 녹화 작업을 처리 중입니다.' };
@@ -334,14 +351,19 @@ app.whenReady().then(async () => {
   win.on('maximize',scheduleMainSave); win.on('unmaximize',scheduleMainSave);
   win.on('close', event => {
     rememberMain();
-    if (closingCapture || !recorder.session) return;
+    if (closingCapture || (!recorder.session && !downloader.state().active)) return;
     event.preventDefault();
     (async () => {
+      if (downloader.state().active) {
+        const choice = await dialog.showMessageBox(win, { type: 'question', buttons: ['다운로드 취소 후 닫기', '계속 다운로드'], defaultId: 1, cancelId: 1, message: 'VOD 다운로드가 진행 중입니다. 취소하고 종료할까요?' });
+        if (choice.response !== 0) return;
+      }
       if (recorder.job) {
         const choice = await dialog.showMessageBox(win, { type: 'question', buttons: ['녹화 종료 후 닫기', '취소'], defaultId: 0, cancelId: 1, message: '진행 중인 녹화를 저장하고 종료할까요?' });
         if (choice.response !== 0) return;
       }
       closingCapture = true;
+      await downloader.cancel();
       try { await recorder.shutdown(); }
       catch (error) { await dialog.showMessageBox(win, { type: 'error', message: error.message, detail: '녹화 폴더에 남은 영상 조각을 확인해 주세요.' }); }
       win.close();
