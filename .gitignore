@@ -6,3 +6,5 @@ Recordings/
 
 *.zip
 Downloads/
+__pycache__/
+*.pyc

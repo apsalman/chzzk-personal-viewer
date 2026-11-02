@@ -52,3 +52,16 @@ test('caption queue stays bounded, ignores stale seek results and terminates the
   assert.equal(results.length,1);
   engine.stop();assert.equal(child.killed,true);assert.equal(engine.state().active,false);
 });
+test('translation requires a complete local model and accepts only Korean, English, Spanish and Japanese',t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'azzz-translation-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ for(const file of ['models/base/model.bin','runtime/Scripts/python.exe']){fs.mkdirSync(path.dirname(path.join(root,file)),{recursive:true});fs.writeFileSync(path.join(root,file),'fixture');}
+ let args;
+ const engine=new Captions({runtime:root,spawnWorker:(_python,argv)=>{args=argv;const child=new EventEmitter();for(const stream of ['stdin','stdout','stderr'])child[stream]=new PassThrough();child.kill=()=>{};return child;}});t.after(()=>engine.stop());
+ assert.equal(engine.state().translationAvailable,false);
+ assert.throws(()=>engine.start('base','cpu','es'),/EnableTranslation/);
+ assert.throws(()=>engine.start('base','cpu','fr'),/언어/);
+ fs.mkdirSync(path.join(root,'translation'));
+ for(const file of ['model.bin','config.json','shared_vocabulary.json','sentencepiece.bpe.model'])fs.writeFileSync(path.join(root,'translation',file),'fixture');
+ assert.equal(engine.state().translationAvailable,true);
+ for(const language of ['ko','en','es','ja']){engine.start('base','cpu',language);assert.equal(args.at(-1),language);assert.equal(engine.state().language,language);engine.stop();}
+});

@@ -1,4 +1,4 @@
-param([switch]$EnableGpu, [ValidateSet("base","small","medium","turbo")][string[]]$Models = @("base","small"))
+param([switch]$EnableGpu, [switch]$EnableTranslation, [ValidateSet("base","small","medium","turbo")][string[]]$Models = @("base","small"))
 $ErrorActionPreference = 'Stop'
 $captionRoot = Join-Path $env:LOCALAPPDATA 'AZZZT\captions'
 $captionPython = Join-Path $captionRoot 'runtime\Scripts\python.exe'
@@ -22,4 +22,10 @@ if ($EnableGpu) {
 $env:HF_HUB_DISABLE_SYMLINKS_WARNING = '1'
 & $captionPython -c 'import os,sys; from faster_whisper.utils import download_model; root=os.path.join(os.environ["LOCALAPPDATA"],"AZZZT","captions","models"); [download_model(name,output_dir=os.path.join(root,name)) for name in sys.argv[1:]]; print("Korean caption models ready.")' @Models
 if ($LASTEXITCODE -ne 0) { throw '모델 다운로드 실패. 인터넷 연결을 확인하고 다시 실행하세요.' }
+if ($EnableTranslation) {
+    & $captionPython -m pip install --disable-pip-version-check 'sentencepiece==0.2.1'
+    if ($LASTEXITCODE -ne 0) { throw '번역 패키지 설치 실패' }
+    & $captionPython -c 'import os; from huggingface_hub import snapshot_download; snapshot_download("osa911/nllb-200-distilled-600M-ct2-int8", revision="46858753dbaf8eb5e21bb6f0037c3b90851e090a", local_dir=os.path.join(os.environ["LOCALAPPDATA"],"AZZZT","captions","translation"), allow_patterns=["model.bin","config.json","shared_vocabulary.json","sentencepiece.bpe.model","README.md"]); print("Translation model ready: Meta NLLB-200 / CC-BY-NC-4.0 (non-commercial).")'
+    if ($LASTEXITCODE -ne 0) { throw '번역 모델 다운로드 실패. 다시 실행하세요.' }
+}
 Write-Host '설치 완료. 앱에서 한국어 자막 켜기를 누르세요. 사용료와 API 키는 필요하지 않습니다.'

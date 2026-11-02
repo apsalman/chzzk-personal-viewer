@@ -14,7 +14,7 @@ $runtimeFiles = @(
     'vk_swiftshader_icd.json', 'vk_swiftshader.dll', 'vulkan-1.dll', 'electron-version.txt'
 )
 $appFiles = @(
-    'package.json', 'server.mjs', 'desktop\main.cjs', 'desktop\preload.cjs',
+    'package.json', 'server.mjs', 'desktop\main.cjs', 'desktop\preload.cjs', 'desktop\caption_translation.py',
     'desktop\account.cjs', 'desktop\following.cjs', 'desktop\login-return.cjs',
     'desktop\navigation.cjs', 'desktop\window-settings.cjs', 'desktop\network.cjs', 'desktop\recorder.cjs', 'desktop\vod-download.cjs', 'desktop\captions.cjs', 'desktop\vod-captions.cjs', 'desktop\caption_worker.py', 'desktop\viewing-state.cjs', 'desktop\pip-geometry.cjs', 'desktop\pip-preload.cjs', 'public\pip.html', 'public\pip.js', 'public\pip.css', 'public\player-keys.js', 'public\seekbar.js', 'public\seek-preview.js', 'public\live-handoff.js', 'public\capture.js', 'public\captions.js', 'public\caption-timeline.js', 'public\caption-worklet.js', 'public\vod-chat.js', 'public\vod-download.js', 'public\app.js', 'public\index.html', 'public\style.css',
     'public\assets\logo.png', 'public\assets\app.ico', 'public\assets\app.png', 'public\vendor\hls.min.js', 'public\vendor\hls.LICENSE'
@@ -55,6 +55,9 @@ profile 폴더를 포함하지 마세요.
 Downloads 폴더도 개인 데이터이므로 재배포 시 제외하세요.
 무료 한국어 자동 자막은 setup-captions.ps1로 최초 설치 후 이용하세요.
 Python 3.10 이상이 필요하며 Small/Base 모델은 PC에 별도로 다운로드합니다.
+영어·스페인어·일본어 번역은 setup-captions.ps1 -EnableTranslation으로 추가 설치합니다.
+번역 모델: Meta NLLB-200 (CC-BY-NC-4.0, 비상업용), 사용료·API 키 없이 로컬 처리.
+https://huggingface.co/facebook/nllb-200-distilled-600M
 
 기능: 공식 채팅, 팔로우 라이브, 화질 선택, m3u8 주소 편집,
 LIVE 버튼으로 최신 위치 이동, 채팅 경계선 드래그 크기 조절.

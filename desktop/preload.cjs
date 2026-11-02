@@ -18,7 +18,7 @@ contextBridge.exposeInMainWorld('desktopChat', {
   captionState: () => ipcRenderer.invoke('caption:state'),
   captionPosition: () => ipcRenderer.invoke('caption:position'),
   captionSetPosition: value => ipcRenderer.invoke('caption:set-position',value),
-  captionStart: (model,device) => ipcRenderer.invoke('caption:start', model,device),
+  captionStart: (model,device,language) => ipcRenderer.invoke('caption:start', model,device,language),
   captionStop: () => ipcRenderer.invoke('caption:stop'),
   captionAudio: data => ipcRenderer.send('caption:audio',data),
   captionReset: epoch => ipcRenderer.send('caption:reset',epoch),

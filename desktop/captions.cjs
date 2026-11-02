@@ -14,15 +14,19 @@ class Captions extends EventEmitter {
     this.active = false; this.ready = false; this.model = 'base'; this.dropped = 0; this.nextId = 0; this.epoch = 0; this.error = '';
   }
   models() { return ['tiny','base','small','medium','turbo'].filter(name => fs.existsSync(path.join(this.runtime, 'models', name, 'model.bin'))); }
-  state() { return { available: fs.existsSync(this.python) && this.models().length > 0, models: this.models(), active: this.active, ready: this.ready, model: this.model, device: this.device || '', notice: this.notice || '', dropped: this.dropped, error: this.error }; }
+  translationAvailable() { return ['model.bin','config.json','shared_vocabulary.json','sentencepiece.bpe.model'].every(file=>fs.existsSync(path.join(this.runtime,'translation',file))); }
+  state() { return { available: fs.existsSync(this.python) && this.models().length > 0, models: this.models(), translationAvailable:this.translationAvailable(), language:this.language||'ko', active: this.active, ready: this.ready, model: this.model, device: this.device || '', notice: this.notice || '', dropped: this.dropped, error: this.error }; }
   publish() { this.emit('state', this.state()); return this.state(); }
-  start(model = 'base', device = 'auto') {
+  start(model = 'base', device = 'auto', language = 'ko') {
     this.stop();
     if (!['tiny','base','small','medium','turbo'].includes(model) || !this.models().includes(model) || !fs.existsSync(this.python)) throw new Error('setup-captions.ps1로 한국어 자막 엔진을 먼저 설치하세요.');
     if (!['auto','cpu','cuda'].includes(device)) throw new Error('지원하지 않는 자막 처리 장치입니다.');
+    if (!['ko','en','es','ja'].includes(language)) throw new Error('지원하지 않는 자막 언어입니다.');
+    if(language!=='ko'&&!this.translationAvailable())throw new Error('setup-captions.ps1 -EnableTranslation으로 번역 모델을 먼저 설치하세요.');
+    this.language=language;
     this.model = model; this.active = true; this.ready = false; this.dropped = 0; this.error = ''; this.epoch = 0;
     this.device = ''; this.notice = '';
-    const child = this.child = this.spawnWorker(this.python, ['-u', this.worker, path.join(this.runtime, 'models', model), device], {
+    const child = this.child = this.spawnWorker(this.python, ['-u', this.worker, path.join(this.runtime, 'models', model), device, language], {
       windowsHide: true, stdio: ['pipe','pipe','pipe'], env: { ...process.env, PYTHONIOENCODING: 'utf-8', HF_HUB_OFFLINE: '1', HF_HUB_DISABLE_TELEMETRY: '1' }
     });
     let pending = '';

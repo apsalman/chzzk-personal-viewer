@@ -224,9 +224,9 @@ app.whenReady().then(async () => {
     if(!trusted(event)||value!==null&&!validCaptionPosition(value))return false;
     try{fs.mkdirSync(profile,{recursive:true});fs.writeFileSync(captionPositionFile,JSON.stringify(value===null?null:{x:value.x,y:value.y}));return true;}catch{return false;}
   });
-  ipcMain.handle('caption:start', (event, model, device) => {
+  ipcMain.handle('caption:start', (event, model, device, language) => {
     if (!trusted(event)) return;
-    try { captions.start(model,device); return { state: captionState() }; } catch(error) { return { error: error.message, state: captionState() }; }
+    try { captions.start(model,device,language); return { state: captionState() }; } catch(error) { return { error: error.message, state: captionState() }; }
   });
   ipcMain.handle('caption:stop', event => { if (!trusted(event)) return; captions.stop(); return captionState(); });
   ipcMain.on('caption:audio', (event, data) => { if (trusted(event)) captions.audio(data); });

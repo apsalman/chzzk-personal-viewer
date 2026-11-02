@@ -25,6 +25,11 @@ def main():
     from faster_whisper import WhisperModel
 
     requested = sys.argv[2] if len(sys.argv) > 2 else "auto"
+    language = sys.argv[3] if len(sys.argv) > 3 else "ko"
+    translator = None
+    if language != "ko":
+        from caption_translation import CaptionTranslator, translate_subtitles
+        translator = CaptionTranslator(Path(sys.argv[1]).parent.parent / "translation", language)
     device, model, notice = "cpu", None, ""
 
     def load(target):
@@ -111,10 +116,18 @@ def main():
                 emit({"type": "backend", "device": device, "notice": "GPU 처리 실패 · CPU로 전환했습니다."})
                 text, cues = transcribe(audio, vod)
             offset = job.get("start", 0)
+            original = text
+            translation_error = ""
+            if translator:
+                try:
+                    text, cues = translate_subtitles(translator, text, cues)
+                except Exception:
+                    translation_error = "번역에 실패해 한국어 자막을 표시합니다."
             emit({"type": "result", "id": job["id"], "epoch": job["epoch"],
                   "mode": "vod" if vod else "live", "start": offset,
                   "cues": [{**cue, "start": cue["start"] + offset, "end": cue["end"] + offset} for cue in cues],
-                  "text": text[:1600], "seconds": seconds, "contextSeconds": len(audio) / 16000, "device": device,
+                  "text": text[:1600], "original": original[:1600], "language": language,
+                  "translationError": translation_error, "seconds": seconds, "contextSeconds": len(audio) / 16000, "device": device,
                   "processing": time.perf_counter() - started})
         except Exception:
             emit({"type": "job-error", "id": job.get("id") if job else None})

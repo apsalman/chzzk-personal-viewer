@@ -54,6 +54,8 @@
   if(api?.captionPosition)api.captionPosition().then(value=>{if(!positionTouched&&validPosition(value)){captionPosition=value;placeCaption();}}).catch(()=>{});
   else try{const value=JSON.parse(localStorage.getItem('caption-position'));if(validPosition(value)){captionPosition=value;placeCaption();}}catch{}
   const timeline = new window.CaptionTimeline();
+  const languageLabel=document.createElement('label');languageLabel.innerHTML='자막 언어 <select id="caption-language"><option value="ko">한국어 · 원문</option><option value="en">영어 · English</option><option value="es">스페인어 · Español</option><option value="ja">일본어 · 日本語</option></select>';el('caption-model').parentElement.insertBefore(languageLabel,el('caption-model').nextSibling);
+  languageLabel.title='한국어 음성을 선택한 언어로 번역합니다. 언어 변경은 자막을 끈 뒤 선택하세요.';
   for(const [name,label] of [['medium','Medium · 고정확도'],['turbo','Turbo · 고정확도 / 속도 개선']])el('caption-model').add(new Option(label,name));
   const liveLabel=document.createElement('label');liveLabel.innerHTML='라이브 <select id="caption-live-mode"><option value="ahead">약 10초 지연 · 자막 동기화</option><option value="audio">현재 소리 인식</option></select>';el('caption-mode-label').after(liveLabel);
   let delayedHls=null,oldSync,delayPending=true;
@@ -77,10 +79,12 @@
   function render(next = state) {
     state = next || {};
     if (!state.active && enabled && !enabling) { enabled = false; disconnect(); }
-    el('caption-toggle').textContent = enabled || state.active ? '한국어 자막 끄기' : '한국어 자막 켜기';
+    el('caption-toggle').textContent = enabled || state.active ? '자막 끄기' : '자막 켜기';
     el('caption-toggle').setAttribute('aria-pressed',String(enabled || !!state.active));
     el('caption-toggle').disabled = enabling || !api?.captionStart || !state.available;
-    for (const id of ['caption-model','caption-interval','caption-device','caption-mode','caption-live-mode']) el(id).disabled = enabling || enabled || !!state.active;
+    for (const id of ['caption-model','caption-interval','caption-device','caption-mode','caption-live-mode','caption-language']) el(id).disabled = enabling || enabled || !!state.active;
+    for(const option of el('caption-language').options)option.disabled=option.value!=='ko'&&!state.translationAvailable;
+    if(state.available&&!state.translationAvailable)languageLabel.title='setup-captions.ps1 -EnableTranslation으로 무료 번역 모델을 설치하세요.';
     liveLabel.hidden=vodMode;
     el('caption-mode-label').hidden = !vodMode;
     for (const option of el('caption-model').options) option.disabled = !!state.models && !state.models.includes(option.value);
@@ -89,6 +93,7 @@
     if (state.ready && state.notice) status += ' · '+state.notice;
     if (enabled && useAhead()) status += ` · 현재 위치보다 ${Math.max(0,timeline.through-video.currentTime).toFixed(0)}초 앞까지 준비`;
     if(enabled&&useLive())status+=' · 라이브 약 10초 지연';
+    if(enabled&&el('caption-language').value!=='ko')status+=` · ${el('caption-language').selectedOptions[0].textContent} 번역`;
     if(enabled&&!vodMode&&window.captureController?.state.active)status+=' · 녹화/리플레이 중에는 현재 소리를 인식합니다.';
     if (vodMode && state.available && !state.vodAvailable) status += ' · FFmpeg가 없어 현재 소리를 인식합니다.';
     el('caption-status').textContent = status;
@@ -147,13 +152,13 @@
     enabling = true; render(); lastMetric = ''; metrics = [];
     try {
       await connectAudio(); enabled = true; reset();
-      const result = await api.captionStart(el('caption-model').value,el('caption-device').value);
+      const result = await api.captionStart(el('caption-model').value,el('caption-device').value,el('caption-language').value);
       if (result.error) throw new Error(result.error);
       state = result.state; reset();
     } catch(error) { enabled = false; disconnect(); await api.captionStop(); lastMetric = ''; state.error = error.message; }
     finally { enabling = false; render(); }
   };
-  el('caption-toggle').title='한국어 자막 켜기/끄기 (C)';
+  el('caption-toggle').title='자막 켜기/끄기 (C)';
   document.addEventListener('keydown',event=>{
     if(event.defaultPrevented||event.repeat||event.isComposing||event.keyCode===229||event.ctrlKey||event.altKey||event.metaKey)return;
     if(event.code!=='KeyC'&&!['c','C'].includes(event.key))return;
@@ -171,6 +176,7 @@
         if (result.error) { retryAt = Date.now()+5000; lastMetric = result.error; render(); return; }
         timeline.add(result.start,result.end,result.cues); cursor = result.end;
         lastMetric = `${el('caption-model').selectedOptions[0].textContent} · ${result.device==='cuda'?'GPU':'CPU'} · 선행 ${result.seconds.toFixed(0)}초 → 처리 ${result.processing.toFixed(2)}초 · 재생 시각 동기화`;
+        if(result.translationError)lastMetric+=' · '+result.translationError;
         tickAhead(); return;
       }
       if (useAhead()) return;
@@ -178,6 +184,7 @@
       metrics.push(result.processing/result.seconds); metrics = metrics.slice(-10);
       const average = metrics.reduce((a,b)=>a+b,0)/metrics.length;
       lastMetric = `${result.device==='cuda'?'GPU':'CPU'} · ${result.seconds.toFixed(0)}초 갱신 / 문맥 ${(result.contextSeconds || result.seconds).toFixed(0)}초 → 처리 ${result.processing.toFixed(2)}초 · 평균 처리비 ${average.toFixed(2)}배 · 수집 포함 지연 약 ${(latency+result.seconds).toFixed(1)}초 · 건너뜀 ${result.dropped}구간`;
+      if(result.translationError)lastMetric+=' · '+result.translationError;
       render(); if (!result.text) return;
       overlay.textContent = result.text; overlay.hidden = false; clearTimeout(hideTimer); hideTimer = setTimeout(clearText,7000);
     });
