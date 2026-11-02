@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { videoId, vodSources, vodMediaURL, createApp } from './server.mjs';
+import { videoId, vodSources, vodMediaURL, vodPreview, createApp } from './server.mjs';
 function load(file) { const context = { module: { exports: {} } }; vm.runInNewContext(readFileSync(new URL(file, import.meta.url), 'utf8'), context); return context.module.exports; }
 const { visibleMessages } = load('./public/vod-chat.js');
 const { describePoint } = load('./public/seekbar.js');
@@ -32,6 +32,16 @@ test('VOD CDN signatures survive nested playlists without leaking to other hosts
   assert.equal(vodMediaURL('https://other.naver.com/part.ts', base), 'https://other.naver.com/part.ts');
   assert.equal(vodMediaURL('part.ts?token=own', base), 'https://video.naver.com/vod/part.ts?token=own');
 });
+test('preview chooses the smallest progressive MP4 and rejects unrelated CDN hosts', () => {
+  const playback = {period:[{adaptationSet:[{mimeType:'video/mp4',representation:[
+    {height:1080,baseURL:[{value:'https://video.naver.com/1080.mp4'}]},
+    {height:144,baseURL:[{value:'https://video.naver.com/144.mp4?token=signed'}]}
+  ]}]}]};
+  assert.equal(vodPreview(playback),'https://video.naver.com/144.mp4?token=signed');
+  assert.equal(vodPreview({}),null);
+  playback.period[0].adaptationSet[0].representation[0].baseURL[0].value='https://example.com/a.mp4';
+  assert.throws(()=>vodPreview(playback));
+});
 test('VOD resolve and chat proxy return usable sources and sanitized timeline data', async t => {
   const original = globalThis.fetch;
   globalThis.fetch = async url => {
@@ -48,6 +58,7 @@ test('VOD resolve and chat proxy return usable sources and sanitized timeline da
   const base = `http://127.0.0.1:${server.address().port}`;
   const vod = await (await original(base + '/api/resolve?url=https://chzzk.naver.com/video/15975252')).json();
   assert.equal(vod.kind, 'vod'); assert.equal(vod.videoId, '15975252'); assert.equal(vod.duration, 123); assert.match(vod.sources[0].url, /^\/media\//);
+  assert.equal(vod.preview.type,'hls'); assert.equal(vod.preview.url,vod.sources[0].url);
   assert.equal(server.vodSource(vod.sources[0].url, '15975252'), vod.sources[0].url);
   assert.equal(server.vodSource(vod.sources[0].url, '999'), null);
   assert.equal(server.vodSource('https://example.com/file.m3u8', '15975252'), null);

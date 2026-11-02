@@ -17,6 +17,7 @@
     const thumb=doc.createElement('span');thumb.className='seek-thumb';
     const tip=doc.createElement('div');tip.className='seek-tooltip';tip.setAttribute('role','tooltip');tip.hidden=true;
     const position=doc.createElement('strong'),movement=doc.createElement('span');tip.append(position,movement);track.append(fill,thumb);bar.append(track,tip);screen.append(bar);
+    const preview=root.installSeekPreview?.(doc,tip,()=>updateTip());
     let dragging=false,hovered=false,lastX=0,hideTimer;
     function range() {
       if(video.seekable.length)return {start:video.seekable.start(0),end:video.seekable.end(video.seekable.length-1)};
@@ -35,6 +36,7 @@
       if(!hovered&&!dragging)return;
       const {target,fraction,bounds}=hoverPoint();
       const text=describePoint(target,video.currentTime,bounds.end,video.dataset?.vod==='true');
+      if(video.dataset?.vod==='true')preview?.show(target);else preview?.hide();
       position.textContent=text.position;movement.textContent=text.movement;tip.hidden=false;
       const width=bar.clientWidth;
       tip.style.left=Math.max(0,Math.min(width-tip.offsetWidth,fraction*width-tip.offsetWidth/2))+'px';
@@ -55,26 +57,27 @@
     }
     bar.addEventListener('pointerenter',event=>{hovered=true;lastX=event.clientX;wake();updateTip();});
     bar.addEventListener('pointermove',event=>{lastX=event.clientX;wake();if(dragging)seekAtPointer();else updateTip();});
-    bar.addEventListener('pointerleave',()=>{hovered=false;if(!dragging)tip.hidden=true;wake();});
+    bar.addEventListener('pointerleave',()=>{hovered=false;if(!dragging){tip.hidden=true;preview?.hide();}wake();});
     bar.addEventListener('pointerdown',event=>{
       if(event.button!==0)return;
       event.preventDefault();lastX=event.clientX;dragging=true;hovered=true;
       bar.setPointerCapture(event.pointerId);bar.focus({preventScroll:true});seekAtPointer();wake();
     });
-    const finish=()=>{dragging=false;tip.hidden=!hovered;wake();};
+    const finish=()=>{dragging=false;tip.hidden=!hovered;if(!hovered)preview?.hide();wake();};
     bar.addEventListener('pointerup',finish);bar.addEventListener('pointercancel',finish);bar.addEventListener('lostpointercapture',finish);
     bar.addEventListener('keydown',event=>{
       if(!['Home','End'].includes(event.key))return;
       event.preventDefault();event.stopPropagation();const {start,end}=range();
       if(end>start)video.currentTime=event.key==='Home'?start:Math.max(start,end-.15);update();wake();
     });
-    bar.addEventListener('focus',wake);bar.addEventListener('blur',()=>{if(!hovered)tip.hidden=true;});
-    screen.addEventListener('pointermove',wake);screen.addEventListener('pointerleave',()=>{hovered=false;if(!dragging){tip.hidden=true;screen.classList.remove('seek-awake');}});
+    bar.addEventListener('focus',wake);bar.addEventListener('blur',()=>{if(!hovered){tip.hidden=true;preview?.hide();}});
+    screen.addEventListener('pointermove',wake);screen.addEventListener('pointerleave',()=>{hovered=false;if(!dragging){tip.hidden=true;preview?.hide();screen.classList.remove('seek-awake');}});
     for(const event of ['timeupdate','durationchange','loadedmetadata','progress','seeking','emptied'])video.addEventListener(event,update);
     video.addEventListener('pause',()=>{wake();screen.classList.add('seek-paused');});
     video.addEventListener('playing',()=>{screen.classList.remove('seek-paused');update();wake();});
     doc.addEventListener('fullscreenchange',()=>{update();wake();});
     update();
+    return { setPreviewSource: value => preview?.setSource(value) };
   }
   if(typeof module!=='undefined'&&module.exports)module.exports={timeLabel,targetAt,describePoint};
   else root.installSeekbar=installSeekbar;

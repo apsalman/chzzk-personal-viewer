@@ -26,6 +26,7 @@ const vodChat = window.installVodChat(video, vodChatElement);
 function setVodMode(data) {
   vodMode = data?.kind === 'vod';
   currentVod = vodMode ? data : null;
+  seekbar.setPreviewSource(vodMode ? data.preview : null);
   video.dataset.vod = String(vodMode);
   vodChat.open(vodMode ? data.videoId : null, data?.chatEnabled);
   document.querySelector('.chat-head strong').textContent = vodMode ? '다시보기 채팅' : '실시간 채팅';
@@ -492,7 +493,7 @@ video.addEventListener('playing', () => {
 video.addEventListener('waiting', () => status('영상을 버퍼링하는 중…'));
 video.addEventListener('error', () => { if (video.currentSrc) status('영상을 재생할 수 없습니다. 다시 연결을 눌러 주세요.', true); });
 window.installPlayerKeys(video, playerToast, toggleFullscreen);
-window.installSeekbar(video);
+const seekbar = window.installSeekbar(video);
 $('address').value = localStorage.getItem('chzzk-channel') || '';
 video.addEventListener('timeupdate', () => persistViewingState());
 for (const name of ['pause','seeked','ended']) video.addEventListener(name, () => persistViewingState(true));

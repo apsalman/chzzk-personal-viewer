@@ -30,6 +30,18 @@ export function vodMediaURL(value, base, signed = new Map()) {
   if (!url.search && url.origin === parent.origin && url.pathname.startsWith(parent.pathname.slice(0, parent.pathname.lastIndexOf('/') + 1)) && parent.searchParams.has('__gda__')) url.searchParams.set('__gda__', parent.searchParams.get('__gda__'));
   return url.href;
 }
+export function vodPreview(playback) {
+  const candidates = [];
+  for (const period of playback?.period || []) for (const adaptation of period.adaptationSet || []) {
+    if (adaptation.mimeType !== 'video/mp4') continue;
+    for (const rep of adaptation.representation || []) {
+      const url = rep.baseURL?.[0]?.value;
+      if (url && /\.mp4(?:\?|$)/i.test(url)) candidates.push({ url: mediaURL(url), height: rep.height || Infinity, bitrate: rep.bandwidth || Infinity });
+    }
+  }
+  candidates.sort((a,b) => a.height-b.height || a.bitrate-b.bitrate);
+  return candidates[0]?.url || null;
+}
 
 export function channelId(value) {
   if (/^[a-f\d]{32}$/i.test(value)) return value.toLowerCase();
@@ -149,7 +161,8 @@ export function createApp({ recorder } = {}) {
           for (const period of playback?.period || []) for (const adaptation of period.adaptationSet || []) for (const rep of adaptation.representation || []) {
             if (rep.otherAttributes?.m3u) { const url = new URL(mediaURL(rep.otherAttributes.m3u)); signed.set(url.origin + url.pathname, url.href); }
           }
-          return json(200, { kind: 'vod', videoId: vod, duration: meta.duration, chatEnabled: meta.videoChatEnabled === true, title: meta.videoTitle, channel: meta.channel?.channelName, channelId: meta.channel?.channelId, sources: sources.map(s => ({ ...s, url: register(s.url, signed) })) });
+          const previewURL = vodPreview(playback);
+          return json(200, { kind: 'vod', videoId: vod, duration: meta.duration, preview: { url: register(previewURL || sources[0].url, signed), type: previewURL ? 'mp4' : 'hls' }, chatEnabled: meta.videoChatEnabled === true, title: meta.videoTitle, channel: meta.channel?.channelName, channelId: meta.channel?.channelId, sources: sources.map(s => ({ ...s, url: register(s.url, signed) })) });
         }
         const id = channelId(value);
         if (!id) {
@@ -202,6 +215,7 @@ export function createApp({ recorder } = {}) {
       const files = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/seekbar.js': ['seekbar.js', 'text/javascript'], '/player-keys.js': ['player-keys.js', 'text/javascript'], '/capture.js': ['capture.js', 'text/javascript'], '/live-handoff.js': ['live-handoff.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'], '/pip.html': ['pip.html', 'text/html'], '/pip.js': ['pip.js', 'text/javascript'], '/pip.css': ['pip.css', 'text/css'], '/vendor/hls.min.js': ['vendor/hls.min.js', 'text/javascript'] };
       files['/vod-chat.js'] = ['vod-chat.js', 'text/javascript'];
       files['/vod-download.js'] = ['vod-download.js', 'text/javascript'];
+      files['/seek-preview.js'] = ['seek-preview.js', 'text/javascript'];
       files['/assets/logo.svg'] = ['assets/logo.svg', 'image/svg+xml'];
       files['/assets/app.ico'] = ['assets/app.ico', 'image/x-icon'];
       const file = files[u.pathname];
