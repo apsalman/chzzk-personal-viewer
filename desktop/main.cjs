@@ -19,7 +19,10 @@ const windowSettingsFile = path.join(profile,'window-state.json');
 const windowSettings = readWindowSettings(windowSettingsFile);
 let mainSaveTimer, pipSaveTimer;
 app.setName('CHZZK Local Viewer');
-if (!app.requestSingleInstanceLock()) app.quit();
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+  return;
+}
 let win, server, chat, origin, currentChannel, chatBounds;
 let chatSession, loggedIn = null, accountBusy = false, accountRevision = 0, accountTimer;
 let playerOnly = false, normalWindowBounds, normalWindowMaximized = false;
@@ -145,7 +148,11 @@ async function openChat(id) {
     await chat.webContents.loadURL(`https://chzzk.naver.com/live/${id}/chat`);
   }
 }
-app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } });
+app.on('second-instance', () => {
+  if (!win || win.isDestroyed()) return;
+  if (win.isMinimized()) win.restore();
+  win.show(); win.focus();
+});
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
   const { createApp } = await import(pathToFileURL(path.join(root, 'server.mjs')).href);
