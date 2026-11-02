@@ -214,6 +214,16 @@ app.whenReady().then(async () => {
   ipcMain.handle('chat:account', async event => trusted(event) ? refreshAccount() : null);
   ipcMain.handle('capture:state', event => trusted(event) ? recorder.state() : null);
   ipcMain.handle('caption:state', event => trusted(event) ? captionState() : null);
+  const captionPositionFile=path.join(profile,'caption-position.json');
+  const validCaptionPosition=value=>value&&Number.isFinite(value.x)&&Number.isFinite(value.y)&&value.x>=0&&value.x<=1&&value.y>=0&&value.y<=1;
+  ipcMain.handle('caption:position',event=>{
+    if(!trusted(event))return null;
+    try{const value=JSON.parse(fs.readFileSync(captionPositionFile,'utf8'));return validCaptionPosition(value)?value:null;}catch{return null;}
+  });
+  ipcMain.handle('caption:set-position',(event,value)=>{
+    if(!trusted(event)||value!==null&&!validCaptionPosition(value))return false;
+    try{fs.mkdirSync(profile,{recursive:true});fs.writeFileSync(captionPositionFile,JSON.stringify(value===null?null:{x:value.x,y:value.y}));return true;}catch{return false;}
+  });
   ipcMain.handle('caption:start', (event, model, device) => {
     if (!trusted(event)) return;
     try { captions.start(model,device); return { state: captionState() }; } catch(error) { return { error: error.message, state: captionState() }; }

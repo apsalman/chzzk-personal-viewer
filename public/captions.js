@@ -4,6 +4,55 @@
   panel.innerHTML = '<div class="capture-row"><button id="caption-toggle" type="button" aria-pressed="false">한국어 자막 켜기</button><label for="caption-model">모델</label><select id="caption-model"><option value="small" selected>Small · 정확도 우선</option><option value="base">Base · 속도 우선</option><option value="tiny">Tiny · 낮은 정확도</option></select><label for="caption-interval">갱신</label><select id="caption-interval"><option value="2" selected>2초 · 빠른 표시</option><option value="3">3초</option><option value="4">4초 · 문맥 우선</option></select><label for="caption-device">처리</label><select id="caption-device"><option value="auto">자동 · GPU 우선</option><option value="cpu">CPU</option><option value="cuda">NVIDIA GPU</option></select><label id="caption-mode-label" hidden>다시보기 <select id="caption-mode"><option value="ahead">선행 인식 · 시간 동기화</option><option value="live">현재 소리 인식</option></select></label></div><p id="caption-status" role="status">한국어 자동 자막 대기</p><small>Small은 정확도 우선, Base는 속도 우선입니다. 다시보기는 FFmpeg로 약 30초 앞까지 자막을 준비합니다. 시작·탐색 직후에는 준비 시간이 필요합니다. 자막은 메인 영상에 표시됩니다.</small>';
   el('capture-tools').after(panel);
   const overlay = document.createElement('div'); overlay.id = 'auto-caption'; overlay.hidden = true; overlay.setAttribute('aria-label','한국어 자동 자막'); video.parentElement.append(overlay);
+  overlay.tabIndex=0;overlay.title='드래그하여 자막 위치 이동 · 방향키로 미세 조정 · Home으로 기본 위치';
+  const positionReset=document.createElement('button');positionReset.type='button';positionReset.textContent='자막 위치 초기화';panel.querySelector('.capture-row').append(positionReset);
+  const positionHelp=document.createElement('small');positionHelp.textContent='표시된 자막을 드래그하여 이동할 수 있습니다. 위치는 다음 실행에도 유지됩니다.';panel.append(document.createElement('br'),positionHelp);
+  let captionPosition=null,positionTouched=false,drag=null;
+  const validPosition=value=>value&&Number.isFinite(value.x)&&Number.isFinite(value.y)&&value.x>=0&&value.x<=1&&value.y>=0&&value.y<=1;
+  function placeCaption(){
+    if(!captionPosition){overlay.style.left='';overlay.style.top='';overlay.style.bottom='';overlay.style.transform='';return;}
+    const area=overlay.parentElement.getBoundingClientRect();
+    if(overlay.hidden||!area.width||!area.height)return;
+    const halfX=Math.min(.5,overlay.offsetWidth/area.width/2),halfY=Math.min(.5,overlay.offsetHeight/area.height/2);
+    const x=Math.max(halfX,Math.min(1-halfX,captionPosition.x)),y=Math.max(halfY,Math.min(1-halfY,captionPosition.y));
+    overlay.style.left=`${x*100}%`;overlay.style.top=`${y*100}%`;overlay.style.bottom='auto';overlay.style.transform='translate(-50%,-50%)';
+  }
+  function saveCaptionPosition(){
+    positionTouched=true;
+    if(api?.captionSetPosition)api.captionSetPosition(captionPosition).catch(()=>{});
+    else try{localStorage.setItem('caption-position',JSON.stringify(captionPosition));}catch{}
+  }
+  positionReset.onclick=()=>{captionPosition=null;placeCaption();saveCaptionPosition();};
+  overlay.addEventListener('pointerdown',event=>{
+    if(event.button!==0)return;
+    positionTouched=true;overlay.focus({preventScroll:true});
+    const rect=overlay.getBoundingClientRect();drag={id:event.pointerId,dx:event.clientX-(rect.left+rect.width/2),dy:event.clientY-(rect.top+rect.height/2)};
+    overlay.setPointerCapture(event.pointerId);overlay.classList.add('dragging');event.preventDefault();event.stopPropagation();
+  });
+  overlay.addEventListener('pointermove',event=>{
+    if(!drag||drag.id!==event.pointerId)return;
+    const rect=overlay.parentElement.getBoundingClientRect();if(!rect.width||!rect.height)return;
+    captionPosition={x:Math.max(0,Math.min(1,(event.clientX-rect.left-drag.dx)/rect.width)),y:Math.max(0,Math.min(1,(event.clientY-rect.top-drag.dy)/rect.height))};placeCaption();
+    event.preventDefault();event.stopPropagation();
+  });
+  function finishDrag(event){if(!drag||event.pointerId!==drag.id)return;drag=null;overlay.classList.remove('dragging');saveCaptionPosition();}
+  for(const name of ['pointerup','pointercancel','lostpointercapture'])overlay.addEventListener(name,finishDrag);
+  for(const name of ['click','dblclick'])overlay.addEventListener(name,event=>event.stopPropagation());
+  overlay.addEventListener('keydown',event=>{
+    if(event.ctrlKey||event.altKey||event.metaKey)return;
+    if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home'].includes(event.key))return;
+    event.preventDefault();event.stopPropagation();
+    if(event.key==='Home'){positionReset.click();return;}
+    const rect=overlay.getBoundingClientRect(),area=overlay.parentElement.getBoundingClientRect(),step=event.shiftKey?10:2;
+    captionPosition={x:Math.max(0,Math.min(1,(rect.left+rect.width/2-area.left+(event.key==='ArrowRight'?step:event.key==='ArrowLeft'?-step:0))/area.width)),y:Math.max(0,Math.min(1,(rect.top+rect.height/2-area.top+(event.key==='ArrowDown'?step:event.key==='ArrowUp'?-step:0))/area.height))};placeCaption();saveCaptionPosition();
+  });
+  new ResizeObserver(placeCaption).observe(overlay.parentElement);
+  new ResizeObserver(placeCaption).observe(overlay);
+  new MutationObserver(placeCaption).observe(overlay,{childList:true,attributes:true,attributeFilter:['hidden']});
+  window.addEventListener('resize',placeCaption);
+  document.addEventListener('fullscreenchange',placeCaption);
+  if(api?.captionPosition)api.captionPosition().then(value=>{if(!positionTouched&&validPosition(value)){captionPosition=value;placeCaption();}}).catch(()=>{});
+  else try{const value=JSON.parse(localStorage.getItem('caption-position'));if(validPosition(value)){captionPosition=value;placeCaption();}}catch{}
   const timeline = new window.CaptionTimeline();
   for(const [name,label] of [['medium','Medium · 고정확도'],['turbo','Turbo · 고정확도 / 속도 개선']])el('caption-model').add(new Option(label,name));
   const liveLabel=document.createElement('label');liveLabel.innerHTML='라이브 <select id="caption-live-mode"><option value="ahead">약 10초 지연 · 자막 동기화</option><option value="audio">현재 소리 인식</option></select>';el('caption-mode-label').after(liveLabel);

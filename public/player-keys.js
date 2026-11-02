@@ -4,7 +4,7 @@
     const fullscreenKey = event.key === 'F11' || event.code === 'KeyF' || ['f','F'].includes(event.key) || (event.altKey && event.key === 'Enter');
     if (event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey || (event.altKey && event.key !== 'Enter')) return false;
     if (!fullscreenKey && !['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key)) return false;
-    if (event.target?.closest?.('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"],[role="combobox"],[role="slider"]:not(.seek-bar),[role="menu"],[role="separator"]')) return false;
+    if (event.target?.closest?.('#auto-caption,input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"],[role="combobox"],[role="slider"]:not(.seek-bar),[role="menu"],[role="separator"]')) return false;
     if (fullscreenKey && typeof fullscreen !== 'function') return false;
     event.preventDefault(); event.stopImmediatePropagation();
     if (fullscreenKey) { fullscreen(event.key === 'F11' || (event.altKey && event.key === 'Enter') ? 'video' : 'chat'); return true; }
