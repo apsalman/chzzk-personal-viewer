@@ -1,4 +1,4 @@
-param([switch]$EnableGpu)
+param([switch]$EnableGpu, [ValidateSet("base","small","medium","turbo")][string[]]$Models = @("base","small"))
 $ErrorActionPreference = 'Stop'
 $captionRoot = Join-Path $env:LOCALAPPDATA 'AZZZT\captions'
 $captionPython = Join-Path $captionRoot 'runtime\Scripts\python.exe'
@@ -20,6 +20,6 @@ if ($EnableGpu) {
     if ($LASTEXITCODE -ne 0) { throw 'GPU 라이브러리 설치 실패' }
 }
 $env:HF_HUB_DISABLE_SYMLINKS_WARNING = '1'
-& $captionPython -c 'import os; from faster_whisper.utils import download_model; root=os.path.join(os.environ["LOCALAPPDATA"],"AZZZT","captions","models"); [download_model(name,output_dir=os.path.join(root,name)) for name in ("base","small")]; print("Korean caption models ready (base/small).")'
+& $captionPython -c 'import os,sys; from faster_whisper.utils import download_model; root=os.path.join(os.environ["LOCALAPPDATA"],"AZZZT","captions","models"); [download_model(name,output_dir=os.path.join(root,name)) for name in sys.argv[1:]]; print("Korean caption models ready.")' @Models
 if ($LASTEXITCODE -ne 0) { throw '모델 다운로드 실패. 인터넷 연결을 확인하고 다시 실행하세요.' }
 Write-Host '설치 완료. 앱에서 한국어 자막 켜기를 누르세요. 사용료와 API 키는 필요하지 않습니다.'

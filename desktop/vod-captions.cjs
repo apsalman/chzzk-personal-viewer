@@ -53,7 +53,10 @@ class VodCaptionAudio {
     const deadline=setTimeout(()=>{abort.abort();if(this.request===request)this.child?.kill();},25000);
     try{
       let input=url,playlist,seek=start;
-      if(hls){const loaded=await loadPlaylist(url,abort.signal);const sliced=sliceHlsPlaylist(loaded.text,loaded.url,start,duration);playlist=sliced.playlist;seek=sliced.seek;input='pipe:0';}
+      if(hls){const loaded=await loadPlaylist(url,abort.signal);
+        let relative=start;
+        if(typeof hls==='object')relative=livePlaylistPosition(loaded.text,hls.sn,hls.time,start);
+        const sliced=sliceHlsPlaylist(loaded.text,loaded.url,relative,duration);playlist=sliced.playlist;seek=sliced.seek;input='pipe:0';}
       if(this.request!==request)throw Error('cancelled');
       return await new Promise((resolve,reject)=>{
         const args=['-hide_banner','-loglevel','error','-rw_timeout','15000000'];
@@ -76,4 +79,13 @@ class VodCaptionAudio {
     }finally{clearTimeout(deadline);if(this.request===request){this.request=null;this.abort=null;}}
   }
 }
-module.exports={VodCaptionAudio,sliceHlsPlaylist};
+function livePlaylistPosition(text,sn,time,start){
+  const sequence=Number(text.match(/#EXT-X-MEDIA-SEQUENCE:(\d+)/)?.[1]||0);
+  const lengths=[...text.matchAll(/#EXTINF:([\d.]+)/g)].map(match=>Number(match[1]));
+  const index=sn-sequence;
+  if(!Number.isSafeInteger(sn)||!Number.isFinite(time)||index<0||index>=lengths.length)throw Error('라이브 구간이 갱신되었습니다. 다시 준비합니다.');
+  const position=start-time+lengths.slice(0,index).reduce((sum,n)=>sum+n,0);
+  if(!Number.isFinite(position)||position<0)throw Error('라이브 구간이 갱신되었습니다. 다시 준비합니다.');
+  return position;
+}
+module.exports={VodCaptionAudio,sliceHlsPlaylist,livePlaylistPosition};

@@ -232,6 +232,16 @@ app.whenReady().then(async () => {
       return {accepted};
     } catch(error) { return {error:error.message}; }
   });
+  ipcMain.handle('caption:live', async (event, config = {}) => {
+    if (!trusted(event)) return;
+    try {
+      const source=server.liveAudioSource(config.url);
+      if(!source||!captions.ready||config.epoch!==captions.epoch)throw Error('라이브 자막 상태를 확인해 주세요.');
+      const pcm=await vodCaptions.decode(origin+source,config.start,config.duration,{sn:config.sn,time:config.time});
+      if(config.epoch!==captions.epoch||!captions.ready)return {cancelled:true};
+      return {accepted:captions.audio({pcm,epoch:config.epoch,start:config.start,end:config.start+pcm.length/64000,capturedAt:Date.now(),mode:'vod'})};
+    }catch(error){return {error:error.message};}
+  });
   ipcMain.handle('vod:download-state', event => trusted(event) ? downloader.state() : null);
   ipcMain.handle('vod:download', async (event, action, config = {}) => {
     if (!trusted(event)) return;

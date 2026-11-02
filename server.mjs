@@ -235,6 +235,10 @@ export function createApp({ recorder } = {}) {
     const source = id && sources.get(id);
     return source && vodContexts.get(id)?.videoId === video && /\.m3u8$/i.test(new URL(source).pathname) ? value : null;
   };
+  server.liveAudioSource = value => {
+    const id = typeof value === 'string' && value.match(/^\/media\/([a-f\d]{32})$/)?.[1];
+    return id && sources.has(id) && !vodContexts.has(id) ? value : null;
+  };
   server.vodAudioSource = (value, video) => {
     const id = typeof value === 'string' && value.match(/^\/media\/([a-f\d]{32})$/)?.[1];
     const source = id && sources.get(id);

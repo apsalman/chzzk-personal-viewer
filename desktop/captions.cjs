@@ -13,12 +13,12 @@ class Captions extends EventEmitter {
     this.python = path.join(this.runtime, 'runtime', 'Scripts', 'python.exe');
     this.active = false; this.ready = false; this.model = 'base'; this.dropped = 0; this.nextId = 0; this.epoch = 0; this.error = '';
   }
-  models() { return ['tiny','base','small'].filter(name => fs.existsSync(path.join(this.runtime, 'models', name, 'model.bin'))); }
+  models() { return ['tiny','base','small','medium','turbo'].filter(name => fs.existsSync(path.join(this.runtime, 'models', name, 'model.bin'))); }
   state() { return { available: fs.existsSync(this.python) && this.models().length > 0, models: this.models(), active: this.active, ready: this.ready, model: this.model, device: this.device || '', notice: this.notice || '', dropped: this.dropped, error: this.error }; }
   publish() { this.emit('state', this.state()); return this.state(); }
   start(model = 'base', device = 'auto') {
     this.stop();
-    if (!['tiny','base','small'].includes(model) || !this.models().includes(model) || !fs.existsSync(this.python)) throw new Error('setup-captions.ps1로 한국어 자막 엔진을 먼저 설치하세요.');
+    if (!['tiny','base','small','medium','turbo'].includes(model) || !this.models().includes(model) || !fs.existsSync(this.python)) throw new Error('setup-captions.ps1로 한국어 자막 엔진을 먼저 설치하세요.');
     if (!['auto','cpu','cuda'].includes(device)) throw new Error('지원하지 않는 자막 처리 장치입니다.');
     this.model = model; this.active = true; this.ready = false; this.dropped = 0; this.error = ''; this.epoch = 0;
     this.device = ''; this.notice = '';

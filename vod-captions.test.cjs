@@ -34,3 +34,14 @@ test('MP4 caption audio uses MP4-compatible options and extracts the requested d
  const samples=new Float32Array(pcm.buffer,pcm.byteOffset,pcm.length/4);
  assert.ok(samples.some(value=>Math.abs(value)>.01));
 });
+test('Live sequence anchors retain the media clock as the playlist window moves',()=>{
+ const {livePlaylistPosition}=require('./desktop/vod-captions.cjs');
+ const original='#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:100\n'+Array.from({length:6},()=>`#EXTINF:2,\n${segment}\n`).join('');
+ const shifted=original.replace('SEQUENCE:100','SEQUENCE:102');
+ assert.equal(livePlaylistPosition(original,105,210,204),4);
+ assert.equal(livePlaylistPosition(shifted,105,210,204),0);
+ assert.throws(()=>livePlaylistPosition(shifted,100,200,204));
+ const sliced=sliceHlsPlaylist(shifted,base,livePlaylistPosition(shifted,105,210,205),6);
+ assert.equal(sliced.seek,1);
+ assert.equal((sliced.playlist.match(/#EXTINF:/g)||[]).length,4);
+});
