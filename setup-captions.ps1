@@ -1,3 +1,4 @@
+param([switch]$EnableGpu)
 $ErrorActionPreference = 'Stop'
 $captionRoot = Join-Path $env:LOCALAPPDATA 'AZZZT\captions'
 $captionPython = Join-Path $captionRoot 'runtime\Scripts\python.exe'
@@ -14,6 +15,10 @@ if (-not (Test-Path -LiteralPath $captionPython)) {
 }
 & $captionPython -m pip install --disable-pip-version-check 'faster-whisper==1.2.1'
 if ($LASTEXITCODE -ne 0) { throw '음성 인식 패키지 설치 실패' }
+if ($EnableGpu) {
+    & $captionPython -m pip install --disable-pip-version-check 'nvidia-cublas-cu12==12.4.5.8' 'nvidia-cudnn-cu12==9.1.0.70'
+    if ($LASTEXITCODE -ne 0) { throw 'GPU 라이브러리 설치 실패' }
+}
 $env:HF_HUB_DISABLE_SYMLINKS_WARNING = '1'
 & $captionPython -c 'import os; from faster_whisper.utils import download_model; root=os.path.join(os.environ["LOCALAPPDATA"],"AZZZT","captions","models"); [download_model(name,output_dir=os.path.join(root,name)) for name in ("tiny","base")]; print("Korean caption models ready (tiny/base).")'
 if ($LASTEXITCODE -ne 0) { throw '모델 다운로드 실패. 인터넷 연결을 확인하고 다시 실행하세요.' }

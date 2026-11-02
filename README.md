@@ -8,7 +8,7 @@
 - **Node.js**: 로컬 서버, 방송 정보 조회, CDN 영상 중계
 - **HTML / CSS / JavaScript + HLS.js**: 영상 재생과 화면 구성
 - **FFmpeg**: 녹화, 리플레이, VOD 다운로드
-- **faster-whisper / Python**: 로컬 한국어 음성 인식(CPU·INT8)
+- **faster-whisper / Python**: 로컬 한국어 음성 인식(NVIDIA GPU / CPU·INT8)
 
 ## 주요 기능
 
@@ -25,7 +25,9 @@
 
 녹화·리플레이·다운로드는 독립 앱에서 지원하며 **FFmpeg가 필요**합니다. FFmpeg를 설치하거나 앱 폴더에 `tools/ffmpeg.exe`를 넣으세요.
 
-자동 자막은 최초 한 번 `./setup-captions.ps1`을 실행한 뒤, 독립 앱에서 영상을 재생하고 **한국어 자막 켜기**를 누르세요. Python 3.10 이상과 모델 다운로드가 필요합니다. 이후에는 API 키·사용료 없이 PC에서 처리합니다. 4초 단위 인식으로 지연·오인식이 있으며 자막은 메인 영상에 표시됩니다. 느리면 Tiny를 선택하세요.
+자동 자막은 최초 한 번 `./setup-captions.ps1`을 실행한 뒤, 독립 앱에서 **한국어 자막 켜기**를 누르세요. Python 3.10 이상이 필요하며 사용료·API 키 없이 PC에서 처리합니다. **Base·2초 갱신·자동**을 권장하며 최근 4초 문맥을 함께 인식합니다. 갱신 간격은 2~4초로 선택할 수 있습니다. 자막은 메인 영상에 표시되며 지연·오인식이 있습니다.
+
+NVIDIA GPU 가속은 `./setup-captions.ps1 -EnableGpu`로 추가 설치합니다(약 1GB). 자동 모드는 GPU를 우선 사용하고 불가능하면 CPU로 전환합니다.
 
 ## 단축키
 

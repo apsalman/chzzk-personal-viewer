@@ -14,13 +14,15 @@ class Captions extends EventEmitter {
     this.active = false; this.ready = false; this.model = 'base'; this.dropped = 0; this.nextId = 0; this.epoch = 0; this.error = '';
   }
   models() { return ['tiny','base'].filter(name => fs.existsSync(path.join(this.runtime, 'models', name, 'model.bin'))); }
-  state() { return { available: fs.existsSync(this.python) && this.models().length > 0, models: this.models(), active: this.active, ready: this.ready, model: this.model, dropped: this.dropped, error: this.error }; }
+  state() { return { available: fs.existsSync(this.python) && this.models().length > 0, models: this.models(), active: this.active, ready: this.ready, model: this.model, device: this.device || '', notice: this.notice || '', dropped: this.dropped, error: this.error }; }
   publish() { this.emit('state', this.state()); return this.state(); }
-  start(model = 'base') {
+  start(model = 'base', device = 'auto') {
     this.stop();
     if (!['tiny','base'].includes(model) || !this.models().includes(model) || !fs.existsSync(this.python)) throw new Error('setup-captions.ps1로 한국어 자막 엔진을 먼저 설치하세요.');
+    if (!['auto','cpu','cuda'].includes(device)) throw new Error('지원하지 않는 자막 처리 장치입니다.');
     this.model = model; this.active = true; this.ready = false; this.dropped = 0; this.error = ''; this.epoch = 0;
-    const child = this.child = this.spawnWorker(this.python, ['-u', this.worker, path.join(this.runtime, 'models', model)], {
+    this.device = ''; this.notice = '';
+    const child = this.child = this.spawnWorker(this.python, ['-u', this.worker, path.join(this.runtime, 'models', model), device], {
       windowsHide: true, stdio: ['pipe','pipe','pipe'], env: { ...process.env, PYTHONIOENCODING: 'utf-8', HF_HUB_OFFLINE: '1', HF_HUB_DISABLE_TELEMETRY: '1' }
     });
     let pending = '';
@@ -33,7 +35,8 @@ class Captions extends EventEmitter {
       const lines = pending.split(/\r?\n/); pending = lines.pop();
       for (const line of lines) {
         let value; try { value = JSON.parse(line); } catch { continue; }
-        if (value.type === 'ready') { clearTimeout(this.startTimer); this.ready = true; this.publish(); }
+        if (value.type === 'ready') { clearTimeout(this.startTimer); this.ready = true; this.device = value.device || 'cpu'; this.notice = value.notice || ''; this.publish(); }
+        else if (value.type === 'backend') { this.device = value.device; this.notice = value.notice || ''; this.publish(); }
         else if (value.type === 'result' || value.type === 'job-error') {
           const job = this.current;
           if (!job || value.id !== job.id) continue;
@@ -65,7 +68,7 @@ class Captions extends EventEmitter {
   send(job) {
     if (!this.child || !this.ready || job.epoch !== this.epoch) return;
     this.current = job; this.child.stdin.write(JSON.stringify(job) + '\n');
-    this.jobTimer = setTimeout(() => { this.error = '음성 인식 처리 시간이 초과되었습니다. 더 빠른 Tiny 모델을 선택해 주세요.'; this.stop(); }, 45000);
+    this.jobTimer = setTimeout(() => { this.error = '음성 인식 처리 시간이 초과되었습니다. 자막을 끄고 GPU 또는 4초 갱신을 선택해 주세요.'; this.stop(); }, 45000);
   }
   stop() {
     clearTimeout(this.startTimer); clearTimeout(this.jobTimer);

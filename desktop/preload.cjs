@@ -16,7 +16,7 @@ contextBridge.exposeInMainWorld('desktopChat', {
   onPiP: callback => ipcRenderer.on('player:pip-state', (_event, active) => callback(active)),
   captureState: () => ipcRenderer.invoke('capture:state'),
   captionState: () => ipcRenderer.invoke('caption:state'),
-  captionStart: model => ipcRenderer.invoke('caption:start', model),
+  captionStart: (model,device) => ipcRenderer.invoke('caption:start', model,device),
   captionStop: () => ipcRenderer.invoke('caption:stop'),
   captionAudio: data => ipcRenderer.send('caption:audio',data),
   captionReset: epoch => ipcRenderer.send('caption:reset',epoch),

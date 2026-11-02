@@ -211,9 +211,9 @@ app.whenReady().then(async () => {
   ipcMain.handle('chat:account', async event => trusted(event) ? refreshAccount() : null);
   ipcMain.handle('capture:state', event => trusted(event) ? recorder.state() : null);
   ipcMain.handle('caption:state', event => trusted(event) ? captions.state() : null);
-  ipcMain.handle('caption:start', (event, model) => {
+  ipcMain.handle('caption:start', (event, model, device) => {
     if (!trusted(event)) return;
-    try { return { state: captions.start(model) }; } catch(error) { return { error: error.message, state: captions.state() }; }
+    try { return { state: captions.start(model,device) }; } catch(error) { return { error: error.message, state: captions.state() }; }
   });
   ipcMain.handle('caption:stop', event => trusted(event) ? captions.stop() : null);
   ipcMain.on('caption:audio', (event, data) => { if (trusted(event)) captions.audio(data); });
