@@ -108,3 +108,4 @@ body.player-only #layout.fullscreen-chat:fullscreen #splitter,#layout.fullscreen
 .chat-emoji{width:24px;height:24px;object-fit:contain;vertical-align:middle}
 #vod-download-progress{width:100%;height:8px;margin-top:12px;accent-color:#00e6ab}
 #vod-download-tools{margin-top:16px;padding:14px;background:#17201c;border:1px solid #344b40;border-radius:8px}#vod-download-status{font-size:12px;color:#a8dec3;overflow-wrap:anywhere;margin:10px 0 6px}#vod-download-tools small{font-size:11px;color:#879e90;line-height:1.6}body.player-only #vod-download-tools,#layout.fullscreen-chat:fullscreen #vod-download-tools{display:none!important}
+.brand-icon{display:block;width:40px;height:40px;flex-shrink:0}.symbol img{display:block;width:80px;height:80px;margin:0 auto}

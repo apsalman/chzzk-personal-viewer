@@ -202,6 +202,8 @@ export function createApp({ recorder } = {}) {
       const files = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/seekbar.js': ['seekbar.js', 'text/javascript'], '/player-keys.js': ['player-keys.js', 'text/javascript'], '/capture.js': ['capture.js', 'text/javascript'], '/live-handoff.js': ['live-handoff.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'], '/pip.html': ['pip.html', 'text/html'], '/pip.js': ['pip.js', 'text/javascript'], '/pip.css': ['pip.css', 'text/css'], '/vendor/hls.min.js': ['vendor/hls.min.js', 'text/javascript'] };
       files['/vod-chat.js'] = ['vod-chat.js', 'text/javascript'];
       files['/vod-download.js'] = ['vod-download.js', 'text/javascript'];
+      files['/assets/logo.svg'] = ['assets/logo.svg', 'image/svg+xml'];
+      files['/assets/app.ico'] = ['assets/app.ico', 'image/x-icon'];
       const file = files[u.pathname];
       if (!file) return json(404, { error: '찾을 수 없습니다.' });
       const body = await readFile(new URL('./public/' + file[0], import.meta.url));

@@ -17,6 +17,7 @@ $expected = ($checksums -split "`n" | Where-Object { $_ -match "\s+\*?$([regex]:
 if (-not $expected -or (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $expected.Trim()) { throw 'Electron checksum mismatch' }
 Expand-Archive -LiteralPath $archive -DestinationPath $output -Force
 Move-Item -LiteralPath (Join-Path $output 'electron.exe') -Destination (Join-Path $output 'ChzzkViewer.exe') -Force
+& (Join-Path $PSScriptRoot 'set-app-icon.ps1') -Executable (Join-Path $output 'ChzzkViewer.exe')
 $appRoot = Join-Path $output 'resources\app'
 New-Item -ItemType Directory -Force $appRoot | Out-Null
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'desktop'),(Join-Path $PSScriptRoot 'public') -Destination $appRoot -Recurse -Force

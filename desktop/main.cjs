@@ -12,6 +12,7 @@ const { VodDownload } = require('./vod-download.cjs');
 const { readWindowSettings, fitWindow, saveWindowSettings } = require('./window-settings.cjs');
 
 const root = path.resolve(__dirname, '..');
+const appIcon = path.join(root, 'public', 'assets', 'app.ico');
 const profile = app.isPackaged ? path.join(path.dirname(process.execPath), 'profile') : path.join(root, '.desktop-profile');
 app.setPath('userData', profile);
 const windowSettingsFile = path.join(profile,'window-state.json');
@@ -113,7 +114,7 @@ function guard(contents, { chatWindow = false, popup = null, expectedLogin = fal
     authDiagnostic('popup-opened', url);
     return {
     action: 'allow', overrideBrowserWindowOptions: {
-      width: 600, height: 850, autoHideMenuBar: true, parent: win,
+      width: 600, height: 850, autoHideMenuBar: true, parent: win, icon: appIcon,
       webPreferences: { session: contents.session, nodeIntegration: false, contextIsolation: true, sandbox: true }
     }
     };
@@ -173,6 +174,7 @@ app.whenReady().then(async () => {
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => callback(permission === 'fullscreen'));
   const initialMain = fitWindow(windowSettings.main?.bounds,workAreas(),{width:1440,height:940,minWidth:1000,minHeight:650});
   win = new BrowserWindow({
+    icon: appIcon,
     ...initialMain, minWidth: Math.min(1000,initialMain.width), minHeight: Math.min(650,initialMain.height),
     title: 'CHZZK Local Viewer', backgroundColor: '#101214', show: false,
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, autoplayPolicy: 'no-user-gesture-required' }
@@ -255,6 +257,7 @@ app.whenReady().then(async () => {
     if (pipWindow && !pipWindow.isDestroyed()) { pipWindow.focus(); return true; }
     const initialPiP = fitWindow(windowSettings.pip?.bounds,workAreas(),{width:480,height:270,minWidth:240,minHeight:135,ratio:16/9});
     pipWindow = new BrowserWindow({ ...initialPiP, minWidth: 240, minHeight: 135,
+      icon: appIcon,
       frame: false, thickFrame: false, hasShadow: false, roundedCorners: false,
       title: 'CHZZK PiP', alwaysOnTop: true, autoHideMenuBar: true, backgroundColor: '#000000',
       webPreferences: { preload: path.join(__dirname, 'pip-preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false, autoplayPolicy: 'no-user-gesture-required' }
@@ -334,7 +337,7 @@ app.whenReady().then(async () => {
   });
   ipcMain.on('chat:login', event => {
     if (!trusted(event)) return;
-    const popup = new BrowserWindow({ width: 600, height: 850, parent: win, autoHideMenuBar: true, title: '네이버 로그인', webPreferences: { session: chatSession, contextIsolation: true, nodeIntegration: false, sandbox: true } });
+    const popup = new BrowserWindow({ icon: appIcon, width: 600, height: 850, parent: win, autoHideMenuBar: true, title: '네이버 로그인', webPreferences: { session: chatSession, contextIsolation: true, nodeIntegration: false, sandbox: true } });
     popups.add(popup); guard(popup.webContents, { popup, expectedLogin: true });
     popup.on('closed', () => { popups.delete(popup); restoreChannelChat(); scheduleAccountCheck(); });
     const destination = currentChannel ? `https://chzzk.naver.com/live/${currentChannel}/chat` : 'https://chzzk.naver.com/';
@@ -342,7 +345,7 @@ app.whenReady().then(async () => {
   });
   ipcMain.on('chat:popout', event => {
     if (!trusted(event) || !currentChannel) return;
-    const popup = new BrowserWindow({ width: 440, height: 820, parent: win, autoHideMenuBar: true, webPreferences: { session: chatSession, contextIsolation: true, nodeIntegration: false, sandbox: true } });
+    const popup = new BrowserWindow({ icon: appIcon, width: 440, height: 820, parent: win, autoHideMenuBar: true, webPreferences: { session: chatSession, contextIsolation: true, nodeIntegration: false, sandbox: true } });
     popups.add(popup); popup.on('closed', () => popups.delete(popup)); guard(popup.webContents, { chatWindow: true, popup });
     popup.loadURL(`https://chzzk.naver.com/live/${currentChannel}/chat`).catch(e => sendStatus(e.message));
   });
