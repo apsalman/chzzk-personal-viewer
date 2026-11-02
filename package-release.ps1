@@ -17,7 +17,7 @@ $appFiles = @(
     'package.json', 'server.mjs', 'desktop\main.cjs', 'desktop\preload.cjs',
     'desktop\account.cjs', 'desktop\following.cjs', 'desktop\login-return.cjs',
     'desktop\navigation.cjs', 'desktop\window-settings.cjs', 'desktop\network.cjs', 'desktop\recorder.cjs', 'desktop\vod-download.cjs', 'desktop\viewing-state.cjs', 'desktop\pip-geometry.cjs', 'desktop\pip-preload.cjs', 'public\pip.html', 'public\pip.js', 'public\pip.css', 'public\player-keys.js', 'public\seekbar.js', 'public\seek-preview.js', 'public\live-handoff.js', 'public\capture.js', 'public\vod-chat.js', 'public\vod-download.js', 'public\app.js', 'public\index.html', 'public\style.css',
-    'public\assets\logo.svg', 'public\assets\app.ico', 'public\assets\app.png', 'public\vendor\hls.min.js', 'public\vendor\hls.LICENSE'
+    'public\assets\logo.png', 'public\assets\app.ico', 'public\assets\app.png', 'public\vendor\hls.min.js', 'public\vendor\hls.LICENSE'
 )
 $files = @()
 foreach ($relative in $runtimeFiles) {
@@ -39,7 +39,7 @@ try {
     $writer = [IO.StreamWriter]::new($entry.Open(), [Text.UTF8Encoding]::new($false))
     try {
         $writer.Write(@'
-치지직 로컬 뷰어 · Windows x64
+AZZZT LOCAL VIEWER · Windows x64
 
 1. ZIP 전체를 쓰기 가능한 폴더에 압축 해제하세요.
 2. ChzzkViewer.exe를 실행하세요. EXE와 리소스 파일을 함께 유지하세요.

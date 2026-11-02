@@ -216,7 +216,7 @@ export function createApp({ recorder } = {}) {
       files['/vod-chat.js'] = ['vod-chat.js', 'text/javascript'];
       files['/vod-download.js'] = ['vod-download.js', 'text/javascript'];
       files['/seek-preview.js'] = ['seek-preview.js', 'text/javascript'];
-      files['/assets/logo.svg'] = ['assets/logo.svg', 'image/svg+xml'];
+      files['/assets/logo.png'] = ['assets/logo.png', 'image/png'];
       files['/assets/app.ico'] = ['assets/app.ico', 'image/x-icon'];
       const file = files[u.pathname];
       if (!file) return json(404, { error: '찾을 수 없습니다.' });

@@ -1,4 +1,4 @@
-# CHZZK Personal Viewer
+# AZZZT LOCAL VIEWER
 
 치지직 라이브·다시보기 영상과 채팅을 함께 보는 Windows 앱입니다.
 

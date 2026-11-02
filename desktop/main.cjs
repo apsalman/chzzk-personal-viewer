@@ -19,7 +19,7 @@ app.setPath('userData', profile);
 const windowSettingsFile = path.join(profile,'window-state.json');
 const windowSettings = readWindowSettings(windowSettingsFile);
 let mainSaveTimer, pipSaveTimer;
-app.setName('CHZZK Local Viewer');
+app.setName('AZZZT LOCAL VIEWER');
 if (!app.requestSingleInstanceLock()) {
   app.quit();
   return;
@@ -184,7 +184,7 @@ app.whenReady().then(async () => {
   win = new BrowserWindow({
     icon: appIcon,
     ...initialMain, minWidth: Math.min(1000,initialMain.width), minHeight: Math.min(650,initialMain.height),
-    title: 'CHZZK Local Viewer', backgroundColor: '#101214', show: false,
+    title: '아자자잣 · Chzzk Local Viewer', backgroundColor: '#101214', show: false,
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, autoplayPolicy: 'no-user-gesture-required' }
   });
   chat = new WebContentsView({ webPreferences: { session: chatSession, contextIsolation: true, nodeIntegration: false, sandbox: true } });
@@ -267,7 +267,7 @@ app.whenReady().then(async () => {
     pipWindow = new BrowserWindow({ ...initialPiP, minWidth: 240, minHeight: 135,
       icon: appIcon,
       frame: false, thickFrame: false, hasShadow: false, roundedCorners: false,
-      title: 'CHZZK PiP', alwaysOnTop: true, autoHideMenuBar: true, backgroundColor: '#000000',
+      title: '아자자잣 · Chzzk Local Viewer · PiP', alwaysOnTop: true, autoHideMenuBar: true, backgroundColor: '#000000',
       webPreferences: { preload: path.join(__dirname, 'pip-preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false, autoplayPolicy: 'no-user-gesture-required' }
     });
     const current = pipWindow;
