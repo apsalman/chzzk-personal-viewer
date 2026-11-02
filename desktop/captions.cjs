@@ -13,12 +13,12 @@ class Captions extends EventEmitter {
     this.python = path.join(this.runtime, 'runtime', 'Scripts', 'python.exe');
     this.active = false; this.ready = false; this.model = 'base'; this.dropped = 0; this.nextId = 0; this.epoch = 0; this.error = '';
   }
-  models() { return ['tiny','base'].filter(name => fs.existsSync(path.join(this.runtime, 'models', name, 'model.bin'))); }
+  models() { return ['tiny','base','small'].filter(name => fs.existsSync(path.join(this.runtime, 'models', name, 'model.bin'))); }
   state() { return { available: fs.existsSync(this.python) && this.models().length > 0, models: this.models(), active: this.active, ready: this.ready, model: this.model, device: this.device || '', notice: this.notice || '', dropped: this.dropped, error: this.error }; }
   publish() { this.emit('state', this.state()); return this.state(); }
   start(model = 'base', device = 'auto') {
     this.stop();
-    if (!['tiny','base'].includes(model) || !this.models().includes(model) || !fs.existsSync(this.python)) throw new Error('setup-captions.ps1로 한국어 자막 엔진을 먼저 설치하세요.');
+    if (!['tiny','base','small'].includes(model) || !this.models().includes(model) || !fs.existsSync(this.python)) throw new Error('setup-captions.ps1로 한국어 자막 엔진을 먼저 설치하세요.');
     if (!['auto','cpu','cuda'].includes(device)) throw new Error('지원하지 않는 자막 처리 장치입니다.');
     this.model = model; this.active = true; this.ready = false; this.dropped = 0; this.error = ''; this.epoch = 0;
     this.device = ''; this.notice = '';
@@ -41,7 +41,8 @@ class Captions extends EventEmitter {
           const job = this.current;
           if (!job || value.id !== job.id) continue;
           clearTimeout(this.jobTimer); this.current = null;
-          if (value.type === 'result' && job.epoch === this.epoch) this.emit('result', { ...value, end: job.end, capturedAt: job.capturedAt, dropped: this.dropped });
+          if (value.type === 'result' && job.epoch === this.epoch) { this.error = ''; this.emit('result', { ...value, mode:job.mode, end: job.end, capturedAt: job.capturedAt, dropped: this.dropped }); }
+          if (value.type === 'job-error' && job.epoch === this.epoch && job.mode === 'vod') this.emit('result',{mode:'vod',epoch:job.epoch,error:'선행 인식 중 오류가 발생했습니다. 잠시 후 재시도합니다.'});
           if (value.type === 'job-error') { this.error = '음성 인식 중 오류가 발생했습니다. 다음 구간을 처리합니다.'; this.publish(); }
           const next = this.pending; this.pending = null; if (next) this.send(next);
         } else if (value.type === 'fatal') { this.error = value.message; this.stop(); }
@@ -56,11 +57,12 @@ class Captions extends EventEmitter {
     if (!Number.isSafeInteger(epoch) || epoch < 0) return;
     this.epoch = epoch; this.pending = null;
   }
-  audio({ pcm, epoch, end, capturedAt } = {}) {
+  audio({ pcm, epoch, end, capturedAt, mode = 'live', start = 0 } = {}) {
     if (!this.ready || !this.child || epoch !== this.epoch || !(pcm instanceof ArrayBuffer || ArrayBuffer.isView(pcm)) || !Number.isFinite(end) || !Number.isFinite(capturedAt)) return false;
     const bytes = pcm instanceof ArrayBuffer ? Buffer.from(pcm) : Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength);
-    if (bytes.length < 64000 || bytes.length > 512000 || bytes.length % 4) return false;
-    const job = { id: ++this.nextId, epoch, end, capturedAt, pcm: bytes.toString('base64') };
+    if (!['live','vod'].includes(mode) || (mode === 'vod' && (!Number.isFinite(start) || start < 0))) return false;
+    if (bytes.length < 64000 || bytes.length > (mode === 'vod' ? 1024000 : 512000) || bytes.length % 4) return false;
+    const job = { id: ++this.nextId, epoch, end, capturedAt, mode, start, pcm: bytes.toString('base64') };
     if (this.current) { if (this.pending) this.dropped++; this.pending = job; this.publish(); }
     else this.send(job);
     return true;

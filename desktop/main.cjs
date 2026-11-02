@@ -10,6 +10,7 @@ const { gestureBounds } = require('./pip-geometry.cjs');
 const { Recorder } = require('./recorder.cjs');
 const { VodDownload } = require('./vod-download.cjs');
 const { Captions } = require('./captions.cjs');
+const { VodCaptionAudio } = require('./vod-captions.cjs');
 const { normalizeViewingState, readViewingState, saveViewingState } = require('./viewing-state.cjs');
 const { readWindowSettings, fitWindow, saveWindowSettings } = require('./window-settings.cjs');
 
@@ -30,7 +31,7 @@ let chatSession, loggedIn = null, accountBusy = false, accountRevision = 0, acco
 let playerOnly = false, normalWindowBounds, normalWindowMaximized = false;
 let pipWindow;
 let pipGesture;
-let recorder, downloader, captions, captureCommandBusy = false, closingCapture = false;
+let recorder, downloader, captions, vodCaptions, captureCommandBusy = false, closingCapture = false;
 const popups = new Set();
 function workAreas() {
   const primary = screen.getPrimaryDisplay();
@@ -162,7 +163,9 @@ app.whenReady().then(async () => {
   recorder = new Recorder({ root: path.join(appBase, 'Recordings'), base: appBase });
   downloader = new VodDownload({ root: path.join(appBase, 'Downloads'), ffmpeg: recorder.ffmpeg });
   captions = new Captions();
-  captions.on('state', state => { if (win && !win.isDestroyed()) win.webContents.send('caption:state',state); });
+  vodCaptions = new VodCaptionAudio(recorder.ffmpeg);
+  const captionState = () => ({...captions.state(),vodAvailable:!!recorder.ffmpeg});
+  captions.on('state', state => { if (!state.active) vodCaptions.cancel(); if (win && !win.isDestroyed()) win.webContents.send('caption:state',{...state,vodAvailable:!!recorder.ffmpeg}); });
   captions.on('result', result => { if (win && !win.isDestroyed()) win.webContents.send('caption:result',result); });
   downloader.on('state', state => { if (win && !win.isDestroyed()) win.webContents.send('vod:download-state', state); });
   recorder.on('state', state => { if (win && !win.isDestroyed()) win.webContents.send('capture:state', state); });
@@ -210,14 +213,25 @@ app.whenReady().then(async () => {
   ipcMain.on('chat:reload', event => { if (trusted(event)) restoreChannelChat(); });
   ipcMain.handle('chat:account', async event => trusted(event) ? refreshAccount() : null);
   ipcMain.handle('capture:state', event => trusted(event) ? recorder.state() : null);
-  ipcMain.handle('caption:state', event => trusted(event) ? captions.state() : null);
+  ipcMain.handle('caption:state', event => trusted(event) ? captionState() : null);
   ipcMain.handle('caption:start', (event, model, device) => {
     if (!trusted(event)) return;
-    try { return { state: captions.start(model,device) }; } catch(error) { return { error: error.message, state: captions.state() }; }
+    try { captions.start(model,device); return { state: captionState() }; } catch(error) { return { error: error.message, state: captionState() }; }
   });
-  ipcMain.handle('caption:stop', event => trusted(event) ? captions.stop() : null);
+  ipcMain.handle('caption:stop', event => { if (!trusted(event)) return; captions.stop(); return captionState(); });
   ipcMain.on('caption:audio', (event, data) => { if (trusted(event)) captions.audio(data); });
-  ipcMain.on('caption:reset', (event, epoch) => { if (trusted(event)) captions.reset(epoch); });
+  ipcMain.on('caption:reset', (event, epoch) => { if (trusted(event)) { captions.reset(epoch); vodCaptions.cancel(); } });
+  ipcMain.handle('caption:vod', async (event, config = {}) => {
+    if (!trusted(event)) return;
+    try {
+      const source = server.vodAudioSource(config.url,config.videoId);
+      if (!source || !captions.ready || config.epoch !== captions.epoch) throw new Error('재생 중인 다시보기와 자막 상태를 확인해 주세요.');
+      const pcm = await vodCaptions.decode(origin+source.path,config.start,config.duration,source.hls);
+      if (config.epoch !== captions.epoch || !captions.ready) return {cancelled:true};
+      const accepted = captions.audio({pcm,epoch:config.epoch,start:config.start,end:config.start+pcm.length/64000,capturedAt:Date.now(),mode:'vod'});
+      return {accepted};
+    } catch(error) { return {error:error.message}; }
+  });
   ipcMain.handle('vod:download-state', event => trusted(event) ? downloader.state() : null);
   ipcMain.handle('vod:download', async (event, action, config = {}) => {
     if (!trusted(event)) return;

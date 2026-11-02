@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('desktopChat', {
   captionStop: () => ipcRenderer.invoke('caption:stop'),
   captionAudio: data => ipcRenderer.send('caption:audio',data),
   captionReset: epoch => ipcRenderer.send('caption:reset',epoch),
+  captionVod: config => ipcRenderer.invoke('caption:vod',config),
   onCaptionState: callback => ipcRenderer.on('caption:state',(_event,state)=>callback(state)),
   onCaptionResult: callback => ipcRenderer.on('caption:result',(_event,result)=>callback(result)),
   downloadState: () => ipcRenderer.invoke('vod:download-state'),

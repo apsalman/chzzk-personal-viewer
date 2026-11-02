@@ -56,36 +56,52 @@ def main():
     history = np.empty(0, dtype=np.float32)
     previous_epoch, previous_time = None, None
 
-    def transcribe(audio):
+    def transcribe(audio, timestamped=False):
         segments, _ = model.transcribe(
-            audio, language="ko", task="transcribe", beam_size=1, best_of=1,
+            audio, language="ko", task="transcribe", beam_size=3 if timestamped else 1, best_of=1,
             temperature=0, condition_on_previous_text=False,
-            repetition_penalty=1.1, no_repeat_ngram_size=3, max_new_tokens=96,
+            repetition_penalty=1.1, no_repeat_ngram_size=3, max_new_tokens=224 if timestamped else 96,
+            word_timestamps=timestamped,
             vad_filter=True, vad_parameters={"min_silence_duration_ms": 300},
             no_speech_threshold=0.6,
         )
-        return " ".join(segment.text.strip() for segment in segments
-                        if segment.no_speech_prob < 0.7 and segment.avg_logprob > -1.5
-                        and segment.compression_ratio < 2.4)
+        valid = [segment for segment in segments if segment.no_speech_prob < 0.7
+                 and segment.avg_logprob > -1.5 and segment.compression_ratio < 2.4]
+        cues = []
+        if timestamped:
+            for segment in valid:
+                if not segment.words:
+                    cues.append({"start": segment.start, "end": segment.end, "text": segment.text.strip()})
+                    continue
+                words = []
+                for word in segment.words:
+                    words.append(word)
+                    if word.end - words[0].start >= 2.5 or len("".join(w.word for w in words)) > 48:
+                        cues.append({"start": words[0].start, "end": word.end, "text": "".join(w.word for w in words).strip()})
+                        words = []
+                if words:
+                    cues.append({"start": words[0].start, "end": words[-1].end, "text": "".join(w.word for w in words).strip()})
+        return " ".join(segment.text.strip() for segment in valid), cues
 
     for line in sys.stdin:
         job = None
         try:
             job = json.loads(line)
+            vod = job.get("mode") == "vod"
             incoming = np.frombuffer(base64.b64decode(job["pcm"], validate=True), dtype="<f4").copy()
-            if not 16000 <= len(incoming) <= 16000 * 8 or not np.isfinite(incoming).all():
+            if not 16000 <= len(incoming) <= 16000 * (16 if vod else 8) or not np.isfinite(incoming).all():
                 raise ValueError("Invalid audio buffer")
             seconds = len(incoming) / 16000
             if job["epoch"] != previous_epoch or previous_time is None or job["capturedAt"] - previous_time > (seconds + 1.5) * 1000:
                 history = np.empty(0, dtype=np.float32)
             # Update every two seconds while retaining four seconds of context.
-            keep = max(0, 64000 - len(incoming))
+            keep = 0 if vod else max(0, 64000 - len(incoming))
             audio = np.concatenate((history[-keep:] if keep else np.empty(0, dtype=np.float32), incoming))
             history = audio[-32000:].copy()
             previous_epoch, previous_time = job["epoch"], job["capturedAt"]
             started = time.perf_counter()
             try:
-                text = transcribe(audio)
+                text, cues = transcribe(audio, vod)
             except Exception:
                 if device != "cuda" or requested != "auto":
                     raise
@@ -93,8 +109,11 @@ def main():
                 model = load("cpu")
                 device = "cpu"
                 emit({"type": "backend", "device": device, "notice": "GPU 처리 실패 · CPU로 전환했습니다."})
-                text = transcribe(audio)
+                text, cues = transcribe(audio, vod)
+            offset = job.get("start", 0)
             emit({"type": "result", "id": job["id"], "epoch": job["epoch"],
+                  "mode": "vod" if vod else "live", "start": offset,
+                  "cues": [{**cue, "start": cue["start"] + offset, "end": cue["end"] + offset} for cue in cues],
                   "text": text[:1600], "seconds": seconds, "contextSeconds": len(audio) / 16000, "device": device,
                   "processing": time.perf_counter() - started})
         except Exception:

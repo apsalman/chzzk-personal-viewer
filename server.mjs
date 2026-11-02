@@ -217,6 +217,7 @@ export function createApp({ recorder } = {}) {
       files['/vod-download.js'] = ['vod-download.js', 'text/javascript'];
       files['/seek-preview.js'] = ['seek-preview.js', 'text/javascript'];
       files['/captions.js'] = ['captions.js', 'text/javascript'];
+      files['/caption-timeline.js'] = ['caption-timeline.js', 'text/javascript'];
       files['/caption-worklet.js'] = ['caption-worklet.js', 'text/javascript'];
       files['/assets/logo.png'] = ['assets/logo.png', 'image/png'];
       files['/assets/app.ico'] = ['assets/app.ico', 'image/x-icon'];
@@ -233,6 +234,11 @@ export function createApp({ recorder } = {}) {
     const id = typeof value === 'string' && value.match(/^\/media\/([a-f\d]{32})$/)?.[1];
     const source = id && sources.get(id);
     return source && vodContexts.get(id)?.videoId === video && /\.m3u8$/i.test(new URL(source).pathname) ? value : null;
+  };
+  server.vodAudioSource = (value, video) => {
+    const id = typeof value === 'string' && value.match(/^\/media\/([a-f\d]{32})$/)?.[1];
+    const source = id && sources.get(id);
+    return source && vodContexts.get(id)?.videoId === video && /\.(?:m3u8|mp4)$/i.test(new URL(source).pathname) ? {path:value,hls:/\.m3u8$/i.test(new URL(source).pathname)} : null;
   };
   return server;
 }
