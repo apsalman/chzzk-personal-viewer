@@ -9,6 +9,14 @@ let playingFragment;
 const video = $('video');
 let vodMode = false;
 let currentVod = null;
+let preferredVodSpeed = 1;
+function applyPlaybackSpeed() {
+  const speed = vodMode ? preferredVodSpeed : 1;
+  video.defaultPlaybackRate = speed;
+  video.playbackRate = speed;
+  video.preservesPitch = true;
+  $('playback-speed').value = String(preferredVodSpeed);
+}
 let viewingState = null, pendingVodResume = null, changingSource = false, lastViewingSave = 0;
 function persistViewingState(force = false) {
   if (!viewingState || (!force && Date.now() - lastViewingSave < 2000)) return;
@@ -25,6 +33,8 @@ $('desktop-chat-slot').before(vodChatElement);
 const vodChat = window.installVodChat(video, vodChatElement);
 function setVodMode(data) {
   vodMode = data?.kind === 'vod';
+  $('speed-control').hidden = !vodMode;
+  applyPlaybackSpeed();
   currentVod = vodMode ? data : null;
   seekbar.setPreviewSource(vodMode ? data.preview : null);
   video.dataset.vod = String(vodMode);
@@ -135,6 +145,7 @@ async function playSource(url, run, preserveLevels = false, height = null) {
   fixedQuality = height;
   if (!preserveLevels) { masterSourceURL = url; qualityLevels = []; }
   video.pause(); video.removeAttribute('src'); video.load();
+  applyPlaybackSpeed();
   if (!preserveLevels) {
     $('quality').replaceChildren(new Option('불러오는 중…', 'auto'));
     $('quality').disabled = true;
@@ -146,6 +157,7 @@ async function playSource(url, run, preserveLevels = false, height = null) {
     const instance = hls = new Hls({ lowLatencyMode: false, maxBufferLength: 30, backBufferLength: 30, liveSyncDurationCount: 4, startPosition: resumeTime ?? -1 });
     video.addEventListener('loadedmetadata', () => {
       if (run !== generation || hls !== instance) return;
+      applyPlaybackSpeed();
       if (resumeTime !== null) video.currentTime = Math.min(resumeTime, Math.max(0, video.duration - .5));
       pendingVodResume = null; changingSource = false; persistViewingState(true);
     }, { once: true });
@@ -233,6 +245,19 @@ $('m3u8-reset').onclick = () => {
 };
 $('source').onchange = () => playSource(resolved.sources[Number($('source').value)].url, generation);
 $('quality').onchange = () => { if (hls) applyQuality(); };
+$('playback-speed').onchange = () => {
+  if (!vodMode) return;
+  preferredVodSpeed = Number($('playback-speed').value);
+  applyPlaybackSpeed();
+  playerToast(`재생 속도 ${preferredVodSpeed}배`);
+};
+video.addEventListener('loadedmetadata', applyPlaybackSpeed);
+video.addEventListener('ratechange', () => {
+  if (!vodMode) { if (video.playbackRate !== 1) applyPlaybackSpeed(); return; }
+  if (!changingSource && [...$('playback-speed').options].some(option => Number(option.value) === video.playbackRate)) {
+    preferredVodSpeed = video.playbackRate; $('playback-speed').value = String(preferredVodSpeed);
+  }
+});
 $('toggle').onclick = () => {
   const off = $('layout').classList.toggle('no-chat');
   $('toggle').textContent = off ? '채팅 OFF' : '채팅 ON'; $('toggle').setAttribute('aria-pressed', String(!off));
