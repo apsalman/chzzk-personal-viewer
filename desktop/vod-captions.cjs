@@ -57,8 +57,8 @@ class VodCaptionAudio {
       if(this.request!==request)throw Error('cancelled');
       return await new Promise((resolve,reject)=>{
         const args=['-hide_banner','-loglevel','error','-rw_timeout','15000000'];
-        if(hls)args.push('-f','hls','-protocol_whitelist','pipe,http,https,tcp,tls,crypto,data');else args.push('-ss',String(start));
-        args.push('-allowed_extensions','ALL','-extension_picky','0','-i',input);
+        if(hls)args.push('-f','hls','-protocol_whitelist','pipe,http,https,tcp,tls,crypto,data','-allowed_extensions','ALL','-extension_picky','0');else args.push('-ss',String(start));
+        args.push('-i',input);
         if(hls)args.push('-ss',String(seek));
         args.push('-t',String(duration),'-vn','-sn','-ac','1','-ar','16000','-f','f32le','pipe:1');
         const child=this.child=spawn(this.ffmpeg,args,{windowsHide:true,stdio:['pipe','pipe','pipe']});
