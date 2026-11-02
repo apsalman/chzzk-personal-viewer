@@ -1,0 +1,363 @@
+const { app, BrowserWindow, WebContentsView, ipcMain, session, Menu, dialog, screen, shell } = require('electron');
+const path = require('node:path');
+const { pathToFileURL } = require('node:url');
+const fs = require('node:fs');
+const { navigationPolicy } = require('./navigation.cjs');
+const { watchLoginReturn } = require('./login-return.cjs');
+const { readLoginState, logoutAccount } = require('./account.cjs');
+const { readFollowingLives } = require('./following.cjs');
+const { gestureBounds } = require('./pip-geometry.cjs');
+const { Recorder } = require('./recorder.cjs');
+const { readWindowSettings, fitWindow, saveWindowSettings } = require('./window-settings.cjs');
+
+const root = path.resolve(__dirname, '..');
+const profile = app.isPackaged ? path.join(path.dirname(process.execPath), 'profile') : path.join(root, '.desktop-profile');
+app.setPath('userData', profile);
+const windowSettingsFile = path.join(profile,'window-state.json');
+const windowSettings = readWindowSettings(windowSettingsFile);
+let mainSaveTimer, pipSaveTimer;
+app.setName('CHZZK Local Viewer');
+if (!app.requestSingleInstanceLock()) app.quit();
+let win, server, chat, origin, currentChannel, chatBounds;
+let chatSession, loggedIn = null, accountBusy = false, accountRevision = 0, accountTimer;
+let playerOnly = false, normalWindowBounds, normalWindowMaximized = false;
+let pipWindow;
+let pipGesture;
+let recorder, captureCommandBusy = false, closingCapture = false;
+const popups = new Set();
+function workAreas() {
+  const primary = screen.getPrimaryDisplay();
+  return [primary,...screen.getAllDisplays().filter(display=>display.id!==primary.id)].map(display=>display.workArea);
+}
+function writeSettings() { try { saveWindowSettings(windowSettingsFile,windowSettings); } catch {} }
+function rememberMain() {
+  clearTimeout(mainSaveTimer);
+  if (!win || win.isDestroyed() || win.isMinimized() || win.isFullScreen()) return;
+  windowSettings.main = { bounds: playerOnly ? normalWindowBounds : win.getNormalBounds(), maximized: playerOnly ? normalWindowMaximized : win.isMaximized() };
+  writeSettings();
+}
+function scheduleMainSave() {
+  if (playerOnly || win?.isFullScreen()) return;
+  clearTimeout(mainSaveTimer); mainSaveTimer = setTimeout(rememberMain,200);
+}
+function naverURL(value) {
+  return navigationPolicy(value).allowed;
+}
+function trusted(event) {
+  return win && !win.isDestroyed() && event.sender === win.webContents && event.senderFrame === win.webContents.mainFrame && event.senderFrame.url.startsWith(origin + '/');
+}
+function sendStatus(text) { if (win && !win.isDestroyed()) win.webContents.send('chat:status', text); }
+function publishAccount() {
+  const state = { loggedIn, busy: accountBusy };
+  if (win && !win.isDestroyed()) win.webContents.send('chat:account', state);
+  return state;
+}
+async function refreshAccount() {
+  if (accountBusy || !chatSession) return publishAccount();
+  const revision = ++accountRevision;
+  try {
+    const value = await readLoginState(chatSession);
+    if (revision === accountRevision) loggedIn = value;
+  } catch {
+    if (revision === accountRevision) sendStatus('로그인 상태를 확인하지 못했습니다. 로그인 확인 버튼으로 다시 확인해 주세요.');
+  }
+  return publishAccount();
+}
+function scheduleAccountCheck() {
+  clearTimeout(accountTimer);
+  accountTimer = setTimeout(refreshAccount, 300);
+}
+function authDiagnostic(kind, value = '', code = '') {
+  let host; try { const u = new URL(value); host = u.hostname ? `${u.protocol}//${u.host}` : u.protocol; } catch { host = 'unknown'; }
+  try {
+    fs.mkdirSync(profile, { recursive: true });
+    const logPath = path.join(profile, 'login-diagnostics.log');
+    if (fs.existsSync(logPath) && fs.statSync(logPath).size > 64000) fs.writeFileSync(logPath, '');
+    fs.appendFileSync(logPath, `${new Date().toISOString()} ${kind} ${host} ${code}\n`);
+  } catch {}
+}
+function restoreChannelChat(contents = chat?.webContents) {
+  if (!contents || contents.isDestroyed() || !currentChannel) return;
+  const target = `https://chzzk.naver.com/live/${currentChannel}/chat`;
+  if (contents.getURL() === target) contents.reload();
+  else contents.loadURL(target).catch(error => sendStatus(error.message));
+}
+function guard(contents, { chatWindow = false, popup = null, expectedLogin = false } = {}) {
+  watchLoginReturn(contents, () => {
+    scheduleAccountCheck();
+    if (chatWindow) {
+      restoreChannelChat(contents);
+      sendStatus('로그인 처리가 끝나 원래 채널의 채팅으로 돌아왔습니다.');
+    } else if (popup) {
+      setImmediate(() => {
+        if (!popup.isDestroyed()) popup.close();
+      });
+    }
+  }, expectedLogin);
+  const validateNavigation = (event, url) => {
+    const policy = navigationPolicy(url);
+    if (policy.allowed) return;
+    event.preventDefault(); authDiagnostic('navigation-blocked', url);
+    sendStatus('네이버 외부 주소로의 이동이 차단되었습니다. 연결 기록을 확인해 주세요.');
+  };
+  contents.on('will-navigate', validateNavigation);
+  contents.on('will-redirect', validateNavigation);
+  contents.on('did-fail-load', (_event, code, description, url, mainFrame) => {
+    if (mainFrame && code !== -3) { authDiagnostic('load-failed', url, code); sendStatus(`로그인/채팅 연결 오류: ${description}`); }
+  });
+  contents.setWindowOpenHandler(({ url }) => {
+    // Form-target login flows may first open an empty window, then navigate it.
+    // The new window has no preload or Node access and is guarded before navigation.
+    if (!naverURL(url) && url !== 'about:blank') { authDiagnostic('popup-blocked', url); return { action: 'deny' }; }
+    authDiagnostic('popup-opened', url);
+    return {
+    action: 'allow', overrideBrowserWindowOptions: {
+      width: 600, height: 850, autoHideMenuBar: true, parent: win,
+      webPreferences: { session: contents.session, nodeIntegration: false, contextIsolation: true, sandbox: true }
+    }
+    };
+  });
+  contents.on('did-create-window', (popup, details) => {
+    popups.add(popup); popup.on('closed', () => { popups.delete(popup); restoreChannelChat(); scheduleAccountCheck(); });
+    guard(popup.webContents, { popup, expectedLogin: details?.url ? new URL(details.url).hostname === 'nid.naver.com' : false });
+  });
+}
+function layoutChat() {
+  if (!chat || !win || win.isDestroyed()) return;
+  const [width, height] = win.getContentSize();
+  const b = chatBounds;
+  const visible = !!((!playerOnly || b?.fullscreenChat === true) && currentChannel && b?.visible && b.width > 10 && b.height > 10);
+  chat.setVisible(visible);
+  if (visible) {
+    const x = Math.max(0, Math.round(b.x)), y = Math.max(0, Math.round(b.y));
+    chat.setBounds({ x, y, width: Math.max(1, Math.min(Math.round(b.width), width - x)), height: Math.max(1, Math.min(Math.round(b.height), height - y)) });
+  }
+}
+async function openChat(id) {
+  if (!/^[a-f\d]{32}$/i.test(id)) throw new Error('잘못된 채널 ID입니다.');
+  const changed = currentChannel !== id;
+  currentChannel = id;
+  layoutChat();
+  if (changed) {
+    sendStatus('공식 채팅에 연결하는 중…');
+    await chat.webContents.loadURL(`https://chzzk.naver.com/live/${id}/chat`);
+  }
+}
+app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } });
+app.whenReady().then(async () => {
+  Menu.setApplicationMenu(null);
+  const { createApp } = await import(pathToFileURL(path.join(root, 'server.mjs')).href);
+  const appBase = app.isPackaged ? path.dirname(process.execPath) : root;
+  recorder = new Recorder({ root: path.join(appBase, 'Recordings'), base: appBase });
+  recorder.on('state', state => { if (win && !win.isDestroyed()) win.webContents.send('capture:state', state); });
+  server = createApp({ recorder });
+  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+  origin = `http://127.0.0.1:${server.address().port}`;
+  recorder.origin = origin;
+  chatSession = session.fromPartition('persist:official-chzzk');
+  chatSession.cookies.on('changed', (_event, cookie) => {
+    if (['NID_AUT', 'NID_SES'].includes(cookie.name)) scheduleAccountCheck();
+  });
+  chatSession.webRequest.onBeforeRequest({ urls: ['http://nid.naver.com/*'] }, (details, callback) => {
+    const policy = navigationPolicy(details.url);
+    if (policy.upgrade) {
+      authDiagnostic('login-https-upgrade', details.url);
+      callback({ redirectURL: policy.upgrade });
+    } else callback({ cancel: true });
+  });
+  chatSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+  chatSession.setPermissionCheckHandler(() => false);
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => callback(permission === 'fullscreen'));
+  const initialMain = fitWindow(windowSettings.main?.bounds,workAreas(),{width:1440,height:940,minWidth:1000,minHeight:650});
+  win = new BrowserWindow({
+    ...initialMain, minWidth: Math.min(1000,initialMain.width), minHeight: Math.min(650,initialMain.height),
+    title: 'CHZZK Local Viewer', backgroundColor: '#101214', show: false,
+    webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, autoplayPolicy: 'no-user-gesture-required' }
+  });
+  chat = new WebContentsView({ webPreferences: { session: chatSession, contextIsolation: true, nodeIntegration: false, sandbox: true } });
+  win.contentView.addChildView(chat); chat.setVisible(false);
+  guard(chat.webContents, { chatWindow: true });
+  chat.webContents.on('did-finish-load', () => {
+    sendStatus('공식 채팅'); scheduleAccountCheck();
+  });
+  chat.webContents.on('did-fail-load', (_e, code, description, _url, mainFrame) => {
+    if (mainFrame && code !== -3) sendStatus(`채팅 연결 실패: ${description}. 채팅 새로고침을 눌러 주세요.`);
+  });
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-navigate', (event, url) => { if (new URL(url).origin !== origin) event.preventDefault(); });
+  ipcMain.handle('chat:open', async (event, id) => { if (!trusted(event)) return; try { await openChat(id); return { ok: true }; } catch (e) { sendStatus(e.message); return { ok: false }; } });
+  ipcMain.on('chat:bounds', (event, bounds) => {
+    if (!trusted(event) || !bounds || !['x', 'y', 'width', 'height'].every(k => Number.isFinite(bounds[k]))) return;
+    chatBounds = { ...bounds, visible: bounds.visible === true }; layoutChat();
+  });
+  ipcMain.on('chat:reload', event => { if (trusted(event)) restoreChannelChat(); });
+  ipcMain.handle('chat:account', async event => trusted(event) ? refreshAccount() : null);
+  ipcMain.handle('capture:state', event => trusted(event) ? recorder.state() : null);
+  ipcMain.on('capture:playhead', (event, epoch) => { if (trusted(event)) recorder.markPlayhead(epoch); });
+  ipcMain.handle('capture:command', async (event, action, config = {}) => {
+    if (!trusted(event) || captureCommandBusy) return { error: '다른 녹화 작업을 처리 중입니다.' };
+    captureCommandBusy = true;
+    try {
+      let state;
+      if (action === 'record-start') state = await recorder.startRecording(config);
+      else if (action === 'record-stop') state = await recorder.stopRecording(config.epoch);
+      else if (action === 'replay-start') state = await recorder.setReplay(true, Number(config.minutes), config);
+      else if (action === 'replay-stop') state = await recorder.setReplay(false, recorder.minutes);
+      else if (action === 'replay-save') state = await recorder.saveReplay(config.epoch);
+      else if (action === 'folder') { await fs.promises.mkdir(recorder.lastFolder, { recursive: true }); await shell.openPath(recorder.lastFolder); state = recorder.state(); }
+      else throw new Error('알 수 없는 녹화 요청입니다.');
+      return { state };
+    } catch (error) { return { error: error.message, state: recorder.state() }; }
+    finally { captureCommandBusy = false; }
+  });
+  ipcMain.handle('player:mode', (event, enabled) => {
+    if (!trusted(event) || typeof enabled !== 'boolean') return playerOnly;
+    if (enabled === playerOnly) return playerOnly;
+    playerOnly = enabled;
+    if (enabled) {
+      normalWindowBounds = win.getNormalBounds(); normalWindowMaximized = win.isMaximized();
+      if (normalWindowMaximized) win.unmaximize();
+      const area = screen.getDisplayMatching(win.getBounds()).workArea;
+      const width = Math.round(Math.min(960, area.width - 60, (area.height - 100) * 16 / 9));
+      win.setMinimumSize(400, 250);
+      win.setContentSize(width, Math.round(width * 9 / 16));
+      win.setAspectRatio(16 / 9);
+      win.center();
+    } else {
+      win.setAspectRatio(0); win.setMinimumSize(1000, 650);
+      if (normalWindowBounds) win.setBounds(normalWindowBounds);
+      if (normalWindowMaximized) win.maximize();
+    }
+    layoutChat();
+    return playerOnly;
+  });
+  ipcMain.handle('player:pip', async (event, config) => {
+    if (!trusted(event)) return false;
+    let url; try { url = new URL(config?.url, origin); } catch { return false; }
+    if (url.origin !== origin || !/^\/(?:media\/[a-f\d]{32}|dvr\/[a-f\d]{24}\/index\.m3u8)$/.test(url.pathname)) return false;
+    if (pipWindow && !pipWindow.isDestroyed()) { pipWindow.focus(); return true; }
+    const initialPiP = fitWindow(windowSettings.pip?.bounds,workAreas(),{width:480,height:270,minWidth:240,minHeight:135,ratio:16/9});
+    pipWindow = new BrowserWindow({ ...initialPiP, minWidth: 240, minHeight: 135,
+      frame: false, thickFrame: false, hasShadow: false, roundedCorners: false,
+      title: 'CHZZK PiP', alwaysOnTop: true, autoHideMenuBar: true, backgroundColor: '#000000',
+      webPreferences: { preload: path.join(__dirname, 'pip-preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false, autoplayPolicy: 'no-user-gesture-required' }
+    });
+    const current = pipWindow;
+    const rememberPiP = () => {
+      clearTimeout(pipSaveTimer); if(current.isDestroyed()||current.isFullScreen())return;
+      windowSettings.pip = {bounds:current.getBounds()}; writeSettings();
+    };
+    const schedulePiPSave = () => {clearTimeout(pipSaveTimer);pipSaveTimer=setTimeout(rememberPiP,200);};
+    current.on('move',schedulePiPSave); current.on('resize',schedulePiPSave); current.on('close',rememberPiP);
+    current.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    current.webContents.on('will-navigate', (event, target) => { if (new URL(target).origin !== origin) event.preventDefault(); });
+    current.on('closed', () => {
+      pipGesture = null;
+      clearTimeout(pipSaveTimer);
+      pipWindow = null;
+      if (win && !win.isDestroyed()) {
+        if (win.isMinimized()) win.restore(); win.show(); win.focus();
+        win.webContents.send('player:pip-state', false);
+      }
+    });
+    try {
+      await current.loadURL(origin + '/pip.html');
+      if (current.isDestroyed()) return false;
+      current.webContents.send('pip:source', { url: url.href, volume: Number.isFinite(config.volume) ? Math.min(1, Math.max(0, config.volume)) : 1, muted: config.muted === true });
+      win.webContents.send('player:pip-state', true);
+      current.show(); current.focus(); rememberPiP();
+      return true;
+    } catch (error) { if (!current.isDestroyed()) current.close(); sendStatus(error.message); return false; }
+  });
+  ipcMain.on('player:pip-close', event => { if (trusted(event) && pipWindow && !pipWindow.isDestroyed()) pipWindow.close(); });
+  ipcMain.on('pip:restore', event => { if (pipWindow && event.sender === pipWindow.webContents) pipWindow.close(); });
+  ipcMain.on('pip:playhead', (event, epoch) => { if (pipWindow && event.sender === pipWindow.webContents) recorder.markPlayhead(epoch); });
+  ipcMain.on('pip:gesture', (event, action, kind) => {
+    if (!pipWindow || pipWindow.isDestroyed() || event.sender !== pipWindow.webContents) return;
+    if (action === 'start' && ['move','n','s','e','w','nw','ne','sw','se'].includes(kind)) {
+      pipGesture = { kind, bounds: pipWindow.getBounds(), point: screen.getCursorScreenPoint() };
+    } else if ((action === 'update' || action === 'end') && pipGesture) {
+      const point = screen.getCursorScreenPoint();
+      pipWindow.setBounds(gestureBounds(pipGesture.bounds, pipGesture.kind, point.x - pipGesture.point.x, point.y - pipGesture.point.y));
+      if (action === 'end') pipGesture = null;
+    }
+  });
+  const addressFile = path.join(profile, 'last-address.json');
+  ipcMain.handle('settings:last-address', event => {
+    if (!trusted(event)) return '';
+    try {
+      const saved = JSON.parse(fs.readFileSync(addressFile, 'utf8'));
+      return typeof saved.address === 'string' ? saved.address : '';
+    } catch { return ''; }
+  });
+  ipcMain.on('settings:save-address', (event, address) => {
+    if (!trusted(event) || typeof address !== 'string' || address.length > 16384) return;
+    try { fs.mkdirSync(profile, { recursive: true }); fs.writeFileSync(addressFile, JSON.stringify({ address })); } catch {}
+  });
+  ipcMain.handle('chat:following', async event => {
+    if (!trusted(event)) return null;
+    if (loggedIn !== true || accountBusy) return { items: [] };
+    try {
+      const items = await readFollowingLives(chatSession);
+      if (loggedIn !== true || accountBusy) return { items: [] };
+      return { items };
+    } catch (error) { return { items: [], error: error.message }; }
+  });
+  ipcMain.handle('chat:logout', async event => {
+    if (!trusted(event) || accountBusy) return null;
+    accountBusy = true; accountRevision++; publishAccount();
+    try {
+      for (const popup of popups) if (!popup.isDestroyed()) popup.close();
+      loggedIn = await logoutAccount(chatSession);
+      restoreChannelChat(); sendStatus('로그아웃되었습니다.');
+    } catch (error) {
+      loggedIn = null; restoreChannelChat(); sendStatus(error.message);
+    } finally { accountBusy = false; publishAccount(); }
+    return publishAccount();
+  });
+  ipcMain.on('chat:login', event => {
+    if (!trusted(event)) return;
+    const popup = new BrowserWindow({ width: 600, height: 850, parent: win, autoHideMenuBar: true, title: '네이버 로그인', webPreferences: { session: chatSession, contextIsolation: true, nodeIntegration: false, sandbox: true } });
+    popups.add(popup); guard(popup.webContents, { popup, expectedLogin: true });
+    popup.on('closed', () => { popups.delete(popup); restoreChannelChat(); scheduleAccountCheck(); });
+    const destination = currentChannel ? `https://chzzk.naver.com/live/${currentChannel}/chat` : 'https://chzzk.naver.com/';
+    popup.loadURL(`https://nid.naver.com/nidlogin.login?url=${encodeURIComponent(destination)}`).catch(error => sendStatus(error.message));
+  });
+  ipcMain.on('chat:popout', event => {
+    if (!trusted(event) || !currentChannel) return;
+    const popup = new BrowserWindow({ width: 440, height: 820, parent: win, autoHideMenuBar: true, webPreferences: { session: chatSession, contextIsolation: true, nodeIntegration: false, sandbox: true } });
+    popups.add(popup); popup.on('closed', () => popups.delete(popup)); guard(popup.webContents, { chatWindow: true, popup });
+    popup.loadURL(`https://chzzk.naver.com/live/${currentChannel}/chat`).catch(e => sendStatus(e.message));
+  });
+  win.on('resize', layoutChat);
+  win.on('move',scheduleMainSave); win.on('resize',scheduleMainSave);
+  win.on('maximize',scheduleMainSave); win.on('unmaximize',scheduleMainSave);
+  win.on('close', event => {
+    rememberMain();
+    if (closingCapture || !recorder.session) return;
+    event.preventDefault();
+    (async () => {
+      if (recorder.job) {
+        const choice = await dialog.showMessageBox(win, { type: 'question', buttons: ['녹화 종료 후 닫기', '취소'], defaultId: 0, cancelId: 1, message: '진행 중인 녹화를 저장하고 종료할까요?' });
+        if (choice.response !== 0) return;
+      }
+      closingCapture = true;
+      try { await recorder.shutdown(); }
+      catch (error) { await dialog.showMessageBox(win, { type: 'error', message: error.message, detail: '녹화 폴더에 남은 영상 조각을 확인해 주세요.' }); }
+      win.close();
+    })();
+  });
+  win.on('closed', () => {
+    clearTimeout(accountTimer);
+    clearTimeout(mainSaveTimer);
+    if (pipWindow && !pipWindow.isDestroyed()) pipWindow.close();
+    for (const popup of popups) if (!popup.isDestroyed()) popup.close();
+    if (chat && !chat.webContents.isDestroyed()) chat.webContents.close();
+    server.closeAllConnections(); server.close(); win = null;
+  });
+  if(windowSettings.main?.maximized)win.maximize();
+  win.show();
+  await win.loadURL(origin);
+  refreshAccount();
+}).catch(error => { dialog.showErrorBox('실행 오류', error.message); app.quit(); });
+app.on('window-all-closed', () => app.quit());

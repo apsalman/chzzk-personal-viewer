@@ -1,0 +1,23 @@
+const { contextBridge, ipcRenderer } = require('electron');
+contextBridge.exposeInMainWorld('desktopChat', {
+  open: id => ipcRenderer.invoke('chat:open', id),
+  bounds: bounds => ipcRenderer.send('chat:bounds', bounds),
+  reload: () => ipcRenderer.send('chat:reload'),
+  login: () => ipcRenderer.send('chat:login'),
+  account: () => ipcRenderer.invoke('chat:account'),
+  following: () => ipcRenderer.invoke('chat:following'),
+  lastAddress: () => ipcRenderer.invoke('settings:last-address'),
+  saveAddress: address => ipcRenderer.send('settings:save-address', address),
+  playerMode: enabled => ipcRenderer.invoke('player:mode', enabled),
+  pip: config => ipcRenderer.invoke('player:pip', config),
+  closePiP: () => ipcRenderer.send('player:pip-close'),
+  onPiP: callback => ipcRenderer.on('player:pip-state', (_event, active) => callback(active)),
+  captureState: () => ipcRenderer.invoke('capture:state'),
+  capture: (action, config) => ipcRenderer.invoke('capture:command', action, config),
+  capturePlayhead: epoch => ipcRenderer.send('capture:playhead', epoch),
+  onCapture: callback => ipcRenderer.on('capture:state', (_event, state) => callback(state)),
+  logout: () => ipcRenderer.invoke('chat:logout'),
+  onAccount: callback => ipcRenderer.on('chat:account', (_event, state) => callback(state)),
+  popout: () => ipcRenderer.send('chat:popout'),
+  onStatus: callback => ipcRenderer.on('chat:status', (_event, text) => callback(text))
+});

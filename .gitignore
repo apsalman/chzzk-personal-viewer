@@ -1,0 +1,7 @@
+dist/
+.build-cache/
+.desktop-profile/
+*.log
+Recordings/
+
+*.zip
