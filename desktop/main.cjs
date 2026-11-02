@@ -9,6 +9,7 @@ const { readFollowingLives } = require('./following.cjs');
 const { gestureBounds } = require('./pip-geometry.cjs');
 const { Recorder } = require('./recorder.cjs');
 const { VodDownload } = require('./vod-download.cjs');
+const { normalizeViewingState, readViewingState, saveViewingState } = require('./viewing-state.cjs');
 const { readWindowSettings, fitWindow, saveWindowSettings } = require('./window-settings.cjs');
 
 const root = path.resolve(__dirname, '..');
@@ -310,6 +311,17 @@ app.whenReady().then(async () => {
     }
   });
   const addressFile = path.join(profile, 'last-address.json');
+  const viewingFile = path.join(profile, 'viewing-state.json');
+  ipcMain.handle('settings:viewing-state', event => {
+    if (!trusted(event)) return null;
+    if (fs.existsSync(viewingFile)) return readViewingState(viewingFile);
+    try { return normalizeViewingState(JSON.parse(fs.readFileSync(addressFile, 'utf8'))); } catch { return null; }
+  });
+  ipcMain.on('settings:save-viewing-state', (event, value) => {
+    event.returnValue = false;
+    if (!trusted(event)) return;
+    try { saveViewingState(viewingFile, value); event.returnValue = true; } catch {}
+  });
   ipcMain.handle('settings:last-address', event => {
     if (!trusted(event)) return '';
     try {

@@ -9,6 +9,16 @@ let playingFragment;
 const video = $('video');
 let vodMode = false;
 let currentVod = null;
+let viewingState = null, pendingVodResume = null, changingSource = false, lastViewingSave = 0;
+function persistViewingState(force = false) {
+  if (!viewingState || (!force && Date.now() - lastViewingSave < 2000)) return;
+  if (viewingState.kind === 'vod' && !changingSource && pendingVodResume === null && video.readyState >= 1) viewingState.position = Math.max(0, video.currentTime);
+  lastViewingSave = Date.now();
+  try {
+    localStorage.setItem('chzzk-viewing-state', JSON.stringify(viewingState));
+    window.desktopChat?.saveViewingState?.(viewingState);
+  } catch {}
+}
 const vodChatElement = document.createElement('div');
 vodChatElement.id = 'vod-chat'; vodChatElement.hidden = true;
 $('desktop-chat-slot').before(vodChatElement);
@@ -115,8 +125,10 @@ async function playSource(url, run, preserveLevels = false, height = null) {
   }
   if (desktopPiP) window.desktopChat.closePiP();
   if (!isDvrSource(url)) syncSourceLink(url, true);
-  const resumeTime = vodMode && preserveLevels && video.readyState >= 1 ? video.currentTime : null;
+  const restoring = vodMode && pendingVodResume !== null;
+  const resumeTime = restoring ? Math.min(pendingVodResume, Math.max(0, (currentVod?.duration || Infinity) - .5)) : vodMode && preserveLevels && video.readyState >= 1 ? video.currentTime : null;
   const wasPaused = video.paused;
+  changingSource = true;
   hls?.destroy(); hls = null;
   playingFragment = null;
   fixedQuality = height;
@@ -131,8 +143,10 @@ async function playSource(url, run, preserveLevels = false, height = null) {
   $('empty').hidden = true;
   if (window.Hls?.isSupported()) {
     const instance = hls = new Hls({ lowLatencyMode: false, maxBufferLength: 30, backBufferLength: 30, liveSyncDurationCount: 4, startPosition: resumeTime ?? -1 });
-    if (resumeTime !== null) video.addEventListener('loadedmetadata', () => {
-      if (run === generation && hls === instance) video.currentTime = resumeTime;
+    video.addEventListener('loadedmetadata', () => {
+      if (run !== generation || hls !== instance) return;
+      if (resumeTime !== null) video.currentTime = Math.min(resumeTime, Math.max(0, video.duration - .5));
+      pendingVodResume = null; changingSource = false; persistViewingState(true);
     }, { once: true });
     let mediaRecoveries = 0;
     instance.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
@@ -144,7 +158,7 @@ async function playSource(url, run, preserveLevels = false, height = null) {
       }
       if (preserveLevels) $('quality-help').textContent = qualityNotice || '자동 또는 원하는 화질로 고정할 수 있습니다.';
       status('연결되었습니다. 자동 재생이 안 되면 영상의 재생 버튼을 눌러 주세요.');
-      if (resumeTime === null || !wasPaused) video.play().catch(() => status('재생 버튼을 눌러 시청을 시작하세요.'));
+      if (restoring || resumeTime === null || !wasPaused) video.play().catch(() => status('재생 버튼을 눌러 시청을 시작하세요.'));
     });
     instance.on(Hls.Events.LEVEL_SWITCHED, (_, data) => {
       if (hls !== instance) return;
@@ -165,11 +179,14 @@ async function playSource(url, run, preserveLevels = false, height = null) {
     $('quality-current').textContent = '브라우저 자동 화질';
     $('quality-help').textContent = '수동 화질 선택은 Chrome 또는 Edge에서 사용할 수 있습니다.';
     video.src = url; video.play().catch(() => status('영상의 재생 버튼을 눌러 주세요.'));
+    video.addEventListener('loadedmetadata', () => { if (run !== generation) return; if (resumeTime !== null) video.currentTime = Math.min(resumeTime, Math.max(0, video.duration - .5)); pendingVodResume = null; changingSource = false; persistViewingState(true); }, { once: true });
   } else { $('empty').hidden = false; status('HLS 재생기를 불러오지 못했습니다. 서버를 다시 시작해 주세요.', true); }
 }
-async function openStream(value = $('address').value.trim(), manual = false) {
+async function openStream(value = $('address').value.trim(), manual = false, restore = null) {
   if (window.captureController?.state.active) { status('녹화 또는 리플레이 버퍼를 종료한 뒤 방송을 변경해 주세요.', true); return; }
+  persistViewingState(true);
   const run = ++generation;
+  viewingState = null; pendingVodResume = null; changingSource = true;
   hls?.destroy(); hls = null; video.pause(); video.removeAttribute('src'); video.load(); $('empty').hidden = false;
   $('open').disabled = true; status('방송 정보를 확인하고 재생 주소를 가져오는 중…');
   try {
@@ -178,6 +195,12 @@ async function openStream(value = $('address').value.trim(), manual = false) {
     if (run !== generation) return;
     if (!response.ok) throw new Error(data.error);
     if (!manual) setVodMode(data);
+    if (!manual) {
+      viewingState = data.kind === 'vod' ? { kind: 'vod', address: `https://chzzk.naver.com/video/${data.videoId}`, position: Math.max(0, Number(restore?.position) || 0) } : data.channelId ? { kind: 'live', address: `https://chzzk.naver.com/live/${data.channelId}`, position: 0 } : null;
+      if (viewingState?.kind === 'vod' && restore) pendingVodResume = viewingState.position;
+      if (viewingState) persistViewingState(true);
+      else { localStorage.removeItem('chzzk-viewing-state'); window.desktopChat?.saveViewingState?.(null); }
+    }
     if (!vodMode) setChat(data.channelId);
     lastRequest = { value, manual };
     resolved = data;
@@ -471,10 +494,23 @@ video.addEventListener('error', () => { if (video.currentSrc) status('영상을 
 window.installPlayerKeys(video, playerToast, toggleFullscreen);
 window.installSeekbar(video);
 $('address').value = localStorage.getItem('chzzk-channel') || '';
-if (window.desktopChat) {
-  let addressEdited = false;
-  $('address').addEventListener('input', () => { addressEdited = true; }, { once: true });
-  window.desktopChat.lastAddress().then(address => {
-    if (!addressEdited && !lastRequest && address) $('address').value = address;
-  }).catch(() => {});
-}
+video.addEventListener('timeupdate', () => persistViewingState());
+for (const name of ['pause','seeked','ended']) video.addEventListener(name, () => persistViewingState(true));
+window.addEventListener('beforeunload', () => persistViewingState(true));
+window.addEventListener('pagehide', () => persistViewingState(true));
+let startupAddressEdited = false;
+$('address').addEventListener('input', () => { startupAddressEdited = true; }, { once: true });
+(async () => {
+  const startupGeneration = generation;
+  try {
+    let saved;
+    if (window.desktopChat?.viewingState) saved = await window.desktopChat.viewingState();
+    else { try { saved = JSON.parse(localStorage.getItem('chzzk-viewing-state')); } catch {} }
+    const address = saved?.address || (window.desktopChat ? await window.desktopChat.lastAddress() : $('address').value);
+    if (startupAddressEdited || generation !== startupGeneration || lastRequest) return;
+    if (address) $('address').value = address;
+    if (!/^https:\/\/chzzk\.naver\.com\/(?:video\/\d+|live\/[a-f\d]{32})(?:\/chat)?\/?$/i.test(address || '')) return;
+    status('마지막 시청 정보를 확인하는 중…');
+    await openStream(address, false, saved?.kind === 'vod' ? saved : null);
+  } catch { status('마지막 시청 정보를 복원하지 못했습니다. 방송 주소를 입력해 주세요.', true); }
+})();

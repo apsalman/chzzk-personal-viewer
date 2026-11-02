@@ -16,7 +16,7 @@ $runtimeFiles = @(
 $appFiles = @(
     'package.json', 'server.mjs', 'desktop\main.cjs', 'desktop\preload.cjs',
     'desktop\account.cjs', 'desktop\following.cjs', 'desktop\login-return.cjs',
-    'desktop\navigation.cjs', 'desktop\window-settings.cjs', 'desktop\network.cjs', 'desktop\recorder.cjs', 'desktop\vod-download.cjs', 'desktop\pip-geometry.cjs', 'desktop\pip-preload.cjs', 'public\pip.html', 'public\pip.js', 'public\pip.css', 'public\player-keys.js', 'public\seekbar.js', 'public\live-handoff.js', 'public\capture.js', 'public\vod-chat.js', 'public\vod-download.js', 'public\app.js', 'public\index.html', 'public\style.css',
+    'desktop\navigation.cjs', 'desktop\window-settings.cjs', 'desktop\network.cjs', 'desktop\recorder.cjs', 'desktop\vod-download.cjs', 'desktop\viewing-state.cjs', 'desktop\pip-geometry.cjs', 'desktop\pip-preload.cjs', 'public\pip.html', 'public\pip.js', 'public\pip.css', 'public\player-keys.js', 'public\seekbar.js', 'public\live-handoff.js', 'public\capture.js', 'public\vod-chat.js', 'public\vod-download.js', 'public\app.js', 'public\index.html', 'public\style.css',
     'public\assets\logo.svg', 'public\assets\app.ico', 'public\assets\app.png', 'public\vendor\hls.min.js', 'public\vendor\hls.LICENSE'
 )
 $files = @()
@@ -67,7 +67,7 @@ HLS.js 라이선스는 resources/app/public/vendor/hls.LICENSE에 있습니다.
 $check = [IO.Compression.ZipFile]::OpenRead($zipPath)
 try {
     $entries = @($check.Entries.FullName)
-    $forbidden = $entries | Where-Object { $_ -match '(?i)(^|/)(profile|Recordings|Downloads|\.buffer|\.desktop-profile|\.build-cache)(/|$)|last-address\.json|login-diagnostics|\.log$|preview\.png$|Cookies|Local Storage|Login Data' }
+    $forbidden = $entries | Where-Object { $_ -match '(?i)(^|/)(profile|Recordings|Downloads|\.buffer|\.desktop-profile|\.build-cache)(/|$)|last-address\.json|viewing-state\.json|login-diagnostics|\.log$|preview\.png$|Cookies|Local Storage|Login Data' }
     if ($forbidden) { throw "Unexpected personal data paths in archive: $($forbidden -join ', ')" }
     if ($entries.Count -ne $files.Count + 1) { throw 'Archive entry count mismatch' }
     if ($entries -notcontains 'ChzzkViewer/ChzzkViewer.exe' -or $entries -notcontains 'ChzzkViewer/resources/app/desktop/main.cjs') { throw 'Archive missing app entry points' }

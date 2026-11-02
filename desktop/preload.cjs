@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('desktopChat', {
   account: () => ipcRenderer.invoke('chat:account'),
   following: () => ipcRenderer.invoke('chat:following'),
   lastAddress: () => ipcRenderer.invoke('settings:last-address'),
+  viewingState: () => ipcRenderer.invoke('settings:viewing-state'),
+  saveViewingState: state => ipcRenderer.sendSync('settings:save-viewing-state', state),
   saveAddress: address => ipcRenderer.send('settings:save-address', address),
   playerMode: enabled => ipcRenderer.invoke('player:mode', enabled),
   pip: config => ipcRenderer.invoke('player:pip', config),
