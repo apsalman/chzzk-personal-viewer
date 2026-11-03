@@ -16,10 +16,11 @@ test('directory sanitizes thumbnail URLs and duplicate or malformed channels',()
 });
 test('exclusions match explicit channels, exact names and metadata keywords without inspecting images',()=>{
  const rows=[{id:'a'.repeat(32),name:'One',title:'게임 방송',category:'게임',tags:[]},{id:'b'.repeat(32),name:'Two',title:'새 방송',category:'게임',tags:['버튜버']},{id:'c'.repeat(32),name:'Three',title:'여캠 소통',category:'talk',tags:[]}];
- assert.equal(rules.visible(rows,{}).length,3);assert.equal(rules.visible(rows,{excludeVirtual:true}).length,2);assert.equal(rules.visible(rows,{excludeCamera:true}).length,2);
+ assert.equal(rules.visible(rows,{}).length,3);assert.equal(rules.visible(rows,{excludeVirtual:true,excludeCamera:true}).length,3);
  assert.equal(rules.visible(rows,{blocked:[{id:rows[0].id,name:'Old name'}],names:['Two']}).length,1);
  assert.equal(rules.visible(rows,{keywords:['게임']}).length,1);assert.equal(rules.visible(rows,{},'Three')[0].id,rows[2].id);
- assert.equal(rules.visible(rows,{excludeVirtual:true,excludeCamera:true})[0].id,rows[0].id);
+ assert.equal(rules.visible(rows,{keywords:['버튜버','여캠']})[0].id,rows[0].id);
  assert.equal(rules.channelId('https://chzzk.naver.com/live/'+rows[0].id),rows[0].id);assert.equal(rules.channelId('https://example.com/'+rows[0].id),null);
  const saved=JSON.parse(JSON.stringify(rules.normalize({blocked:[{id:rows[0].id,name:'One'}],excludeVirtual:true,sort:'latest'})));assert.equal(rules.normalize(saved).blocked[0].name,'One');assert.equal(rules.normalize(saved).sort,'latest');
+ assert.equal('excludeVirtual' in saved,false);assert.equal('excludeCamera' in saved,false);
 });
