@@ -10,6 +10,23 @@
   let settings=rules.normalize(null),rows=[],next=null,busy=false,revision=0,controller,playing=[],ready=false,saveTimer,saveRevision=0;
   let autoFailed=false,autoFrame=0,autoTarget=null;
   const visible=()=>document.body.classList.contains('home-mode')||document.body.classList.contains('directory-docked');
+  const topButton=document.createElement('button');topButton.id='home-scroll-top';topButton.type='button';topButton.textContent='↑ 맨 위로';topButton.hidden=true;topButton.setAttribute('aria-label','방송 목록 맨 위로 이동');home.append(topButton);
+  function updateTopButton(){
+    const docked=document.body.classList.contains('directory-docked'),rect=home.getBoundingClientRect();
+    const offset=docked?home.scrollTop:window.scrollY;
+    topButton.hidden=!visible()||offset<300||(docked&&(rect.bottom<=0||rect.top>=innerHeight));
+    topButton.style.right=(docked?Math.max(16,innerWidth-Math.min(innerWidth,rect.right)+16):24)+'px';
+    topButton.style.bottom=(docked?Math.max(16,innerHeight-Math.min(innerHeight,rect.bottom)+16):24)+'px';
+  }
+  let topFrame=0;
+  function scheduleTopButton(){if(!topFrame)topFrame=requestAnimationFrame(()=>{topFrame=0;updateTopButton();});}
+  topButton.onclick=()=>{
+    const target=document.body.classList.contains('directory-docked')?home:window;
+    target.scrollTo({top:0,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
+  };
+  home.addEventListener('scroll',scheduleTopButton,{passive:true});window.addEventListener('scroll',scheduleTopButton,{passive:true});window.addEventListener('resize',scheduleTopButton);
+  new ResizeObserver(scheduleTopButton).observe(home);
+  new MutationObserver(scheduleTopButton).observe(document.body,{attributes:true,attributeFilter:['class']});
   let autoObserver;
   function configureObserver(){autoObserver?.disconnect();autoObserver=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.target===autoTarget&&entry.isIntersecting)&&!busy&&next&&!autoFailed&&visible())load();},{root:document.body.classList.contains('directory-docked')?home:null});}
   configureObserver();

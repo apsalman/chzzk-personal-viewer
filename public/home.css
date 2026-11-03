@@ -12,3 +12,5 @@ body.home-mode #layout,body.home-mode footer{display:none!important}body:not(.ho
 @media(max-width:740px){#home-screen{padding:20px 16px}#home-grid{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}.home-controls input{flex-basis:100%;max-width:none}.home-heading h1{font-size:22px}.home-heading p{display:none}}
 
 .multi-directory-body{flex:1;min-height:0;overflow:hidden}body.directory-docked #home-screen{display:block;width:100%;height:100%;max-width:none;padding:16px;overflow-y:auto;overscroll-behavior:contain;min-width:0;box-sizing:border-box}body.directory-docked .home-heading h1{font-size:22px}body.directory-docked #home-grid{grid-template-columns:repeat(auto-fill,minmax(min(240px,100%),1fr))}
+
+#home-scroll-top{position:fixed;right:24px;bottom:24px;z-index:20;border-color:#4b826b;border-radius:24px;padding:11px 16px;background:#1b3c30;color:#c3ffe3;font-size:13px;box-shadow:0 4px 18px #0008}#home-scroll-top:hover{background:#2c5845}
