@@ -1,0 +1,38 @@
+#add-stream{white-space:nowrap;height:46px;font-size:14px;flex-shrink:0;border-color:#347660;color:#91f2c8}
+#multi-toolbar{display:flex;gap:8px;align-items:center;padding:0 0 8px;flex-wrap:wrap}#multi-toolbar button{font-size:12px;padding:6px 10px}#multi-toolbar span{font-size:11px;color:#9cb4aa}
+body.multi-view #layout{display:block;padding:12px 16px}body.multi-view #splitter,body.multi-view footer{display:none}
+#multi-board{position:relative;width:100%;height:calc(100dvh - 160px);min-height:420px}
+.multi-tile{position:absolute;display:flex;flex-direction:column;min-width:0;min-height:0;border:1px solid #34483f;background:#0c1410;border-radius:7px;overflow:hidden}
+.multi-tile.selected{border-color:#00c995}
+.multi-head{display:flex;align-items:center;gap:5px;min-height:36px;padding:4px 6px;background:#18251f;flex-shrink:0;overflow:auto}
+.multi-head button,.multi-head select{font-size:11px;padding:5px 7px;white-space:nowrap}.multi-head .multi-handle{cursor:grab;flex:1;min-width:72px;overflow:hidden;text-overflow:ellipsis;text-align:left;background:transparent;border-color:transparent;font-weight:600;touch-action:none}
+.multi-body{display:grid;flex:1;min-height:0;min-width:0;overflow:hidden}
+.multi-tile[data-chat-side=bottom] .multi-body{grid-template-rows:minmax(0,1fr) minmax(90px,30%);grid-template-columns:minmax(0,1fr)}
+.multi-tile[data-chat-side=right] .multi-body{grid-template-columns:minmax(0,1fr) clamp(160px,28%,300px);grid-template-rows:minmax(0,1fr)}
+.multi-tile[data-chat=false] .multi-body{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
+.multi-tile[data-chat=false] aside{display:none!important}
+body.multi-view .multi-tile .watch{position:relative;min-height:0;min-width:0;height:100%;overflow:hidden}
+body.multi-view .multi-tile .screen{width:100%;height:100%;min-height:0;aspect-ratio:auto;border:0;background:#000}
+body.multi-view .multi-tile aside,body.multi-view #layout.no-chat .multi-chat{display:flex;min-height:0;height:100%;width:100%;border-radius:0;border:0;border-top:1px solid #34483f}
+body.multi-view .multi-tile .chat-head{font-size:11px;padding:5px 8px;gap:4px;min-height:28px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.multi-view .multi-tile .chat-head button{font-size:10px;padding:3px 6px}
+body.multi-view .multi-tile #desktop-chat-slot,.multi-chat-slot{flex:1;min-height:0;overflow:auto;position:relative}
+body.multi-view .multi-tile .chat-note{display:none}
+body.multi-view .multi-primary-settings{display:none;position:absolute;z-index:9;top:8px;right:8px;width:min(600px,96%);max-height:calc(100% - 16px);overflow:auto;padding:12px;background:#121d19f5;border:1px solid #466654;border-radius:8px}
+body.multi-view .multi-primary-settings.open{display:block}body.multi-view .multi-primary-settings .info{margin-top:0;flex-direction:column}
+.multi-note{position:absolute;inset:15% 10% auto;text-align:center;font-size:12px;background:#13221de8;padding:10px;border-radius:6px;pointer-events:none}
+#multi-snap-preview{position:absolute;z-index:25;border:3px solid #00e6ab;border-radius:8px;background:#00e6ab33;display:flex;align-items:center;justify-content:center;color:white;font-size:18px;font-weight:700;pointer-events:none;text-shadow:0 1px 4px #000}
+body.multi-dragging,body.multi-dragging *{cursor:grabbing!important;user-select:none!important}
+body.multi-view #layout:fullscreen{display:flex;flex-direction:column;background:#101714;padding:8px;width:100vw;height:100vh}
+body.multi-view #layout:fullscreen #multi-board{flex:1;height:auto;min-height:0}
+body.multi-view #layout.fullscreen-chat:fullscreen{display:flex!important;grid-template-columns:none!important}
+body.multi-view #layout.fullscreen-chat:fullscreen #chat{height:100%!important;min-height:0!important}
+body.multi-view #layout.fullscreen-chat:fullscreen #splitter{display:none!important}
+body.multi-view #layout.fullscreen-chat:fullscreen .multi-tile[data-chat=false] #chat{display:none!important}
+body.multi-view.player-only #multi-toolbar{display:none}body.multi-view.player-only #layout{height:100vh;padding:0}body.multi-view.player-only #multi-board{height:100vh;min-height:0}
+body.multi-view.player-only .multi-body{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}body.multi-view.player-only .multi-tile aside{display:none!important}
+.multi-chat-slot:has(.vod-chat-list){display:flex;flex-direction:column}
+body.multi-view .multi-tile .screen:fullscreen{width:100vw;height:100vh}
+#multi-status{color:#ffb3a7!important}
+@media(max-width:1050px){#multi-board{height:calc(100dvh - 210px)}}
+@media(max-width:740px){#multi-board{height:calc(100dvh - 230px);min-height:560px}body.multi-view #layout{padding:8px}.multi-head{gap:2px}.multi-head button,.multi-head select{padding:4px;font-size:10px}}

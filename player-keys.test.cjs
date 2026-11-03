@@ -8,6 +8,15 @@ function event(key,editing=false,extra={}) {
   return { key, target:{closest:()=>editing}, preventDefault(){this.prevented=true;},stopImmediatePropagation(){this.stopped=true;},...extra };
 }
 function video() { return { volume:.5,muted:false,currentTime:20,duration:120,seekable:{length:1,start:()=>10,end:()=>100} }; }
+
+test('installed shortcuts seek the selected multi-view player without changing the main player',()=>{
+  const browser={};vm.runInNewContext(fs.readFileSync(path.join(__dirname,'public/player-keys.js'),'utf8'),browser);
+  const main=video(),selected=video();selected.currentTime=40;let listener,mode;
+  const doc={defaultView:{multiView:{count:2,activeVideo:selected,fullscreen:value=>{mode=value;}}},addEventListener:(_name,callback)=>{listener=callback;}};
+  browser.installPlayerKeys(main,()=>{},()=>{},doc);
+  listener(event('ArrowRight'));assert.equal(selected.currentTime,45);assert.equal(main.currentTime,20);
+  listener(event('F11'));assert.equal(mode,'video');
+});
 test('arrow keys change volume by 5 percent and seek 5 seconds within the available range',()=>{
   const v=video();
   handlePlayerKey(event('ArrowUp'),v);assert.equal(v.volume,.55);

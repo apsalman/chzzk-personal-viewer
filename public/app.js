@@ -274,7 +274,7 @@ function reportChatBounds() {
   const headerBottom = document.fullscreenElement ? 0 : document.querySelector('header').getBoundingClientRect().bottom;
   const top = Math.max(0, headerBottom, r.top), bottom = Math.min(window.innerHeight, r.bottom);
   const visibleMode = fullChat || (!document.fullscreenElement && !document.body.classList.contains('player-only') && !$('layout').classList.contains('no-chat'));
-  window.desktopChat.bounds({ x: r.x, y: top, width: r.width, height: Math.max(0, bottom - top), fullscreenChat: fullChat, visible: !vodMode && visibleMode && !resizingPanels && r.width > 0 });
+  window.desktopChat.bounds({ x: r.x, y: top, width: r.width, height: Math.max(0, bottom - top), fullscreenChat: fullChat, visible: !vodMode && visibleMode && !resizingPanels && !window.multiViewDragging && r.width > 0 });
 }
 const splitter = $('splitter');
 let panelWidth = Number(localStorage.getItem('chzzk-chat-width')) || 360;

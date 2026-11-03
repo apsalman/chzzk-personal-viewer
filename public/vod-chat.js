@@ -49,12 +49,12 @@
       } finally { clearTimeout(timer); if (run === revision) busy = false; }
     }
     video.addEventListener('timeupdate', tick); video.addEventListener('seeking', tick); video.addEventListener('seeked', tick);
-    setInterval(tick, 1000);
+    const timer=setInterval(tick, 1000);
     return { open(value, available = true) {
       revision++; controller?.abort(); id = value; enabled = available; rows = []; covered = -1; lastTime = -1; busy = false; retryAt = 0; signature = ''; list.replaceChildren();
       container.hidden = !id; note.textContent = available ? '과거 채팅을 불러오는 중…' : '이 영상은 다시보기 채팅을 제공하지 않습니다.';
       if (id) tick();
-    } };
+    }, destroy(){id=null;revision++;controller?.abort();clearInterval(timer);for(const name of ['timeupdate','seeking','seeked'])video.removeEventListener(name,tick);} };
   }
   root.installVodChat = installVodChat;
   if (typeof module !== 'undefined') module.exports = { visibleMessages };

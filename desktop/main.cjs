@@ -11,6 +11,7 @@ const { Recorder } = require('./recorder.cjs');
 const { VodDownload } = require('./vod-download.cjs');
 const { Captions } = require('./captions.cjs');
 const { VodCaptionAudio } = require('./vod-captions.cjs');
+const { MultiChat } = require('./multi-chat.cjs');
 const { normalizeViewingState, readViewingState, saveViewingState } = require('./viewing-state.cjs');
 const { readWindowSettings, fitWindow, saveWindowSettings } = require('./window-settings.cjs');
 
@@ -32,6 +33,7 @@ let playerOnly = false, normalWindowBounds, normalWindowMaximized = false;
 let pipWindow;
 let pipGesture;
 let recorder, downloader, captions, vodCaptions, captureCommandBusy = false, closingCapture = false;
+let multiChat;
 const popups = new Set();
 function workAreas() {
   const primary = screen.getPrimaryDisplay();
@@ -84,17 +86,17 @@ function authDiagnostic(kind, value = '', code = '') {
     fs.appendFileSync(logPath, `${new Date().toISOString()} ${kind} ${host} ${code}\n`);
   } catch {}
 }
-function restoreChannelChat(contents = chat?.webContents) {
-  if (!contents || contents.isDestroyed() || !currentChannel) return;
-  const target = `https://chzzk.naver.com/live/${currentChannel}/chat`;
+function restoreChannelChat(contents = chat?.webContents, channel = currentChannel) {
+  if (!contents || contents.isDestroyed() || !channel) return;
+  const target = `https://chzzk.naver.com/live/${channel}/chat`;
   if (contents.getURL() === target) contents.reload();
   else contents.loadURL(target).catch(error => sendStatus(error.message));
 }
-function guard(contents, { chatWindow = false, popup = null, expectedLogin = false } = {}) {
+function guard(contents, { chatWindow = false, popup = null, expectedLogin = false, channel = null } = {}) {
   watchLoginReturn(contents, () => {
     scheduleAccountCheck();
     if (chatWindow) {
-      restoreChannelChat(contents);
+      restoreChannelChat(contents,channel||currentChannel);
       sendStatus('로그인 처리가 끝나 원래 채널의 채팅으로 돌아왔습니다.');
     } else if (popup) {
       setImmediate(() => {
@@ -197,6 +199,15 @@ app.whenReady().then(async () => {
   chat = new WebContentsView({ webPreferences: { session: chatSession, contextIsolation: true, nodeIntegration: false, sandbox: true } });
   win.contentView.addChildView(chat); chat.setVisible(false);
   guard(chat.webContents, { chatWindow: true });
+  multiChat=new MultiChat({window:win,
+    createView:()=>new WebContentsView({webPreferences:{session:chatSession,contextIsolation:true,nodeIntegration:false,sandbox:true}}),
+    guard:(contents,channel)=>guard(contents,{chatWindow:true,channel})});
+  win.webContents.on('did-start-navigation',(_event,_url,inPlace,mainFrame)=>{if(mainFrame&&!inPlace)multiChat.closeAll();});
+  ipcMain.handle('multi:chat',async(event,action,id,channel)=>{
+    if(!trusted(event))return;
+    try{if(action==='open')await multiChat.open(id,channel);else if(action==='close')multiChat.close(id);else throw Error('올바르지 않은 채팅 작업입니다.');return {ok:true};}catch(error){return {error:error.message};}
+  });
+  ipcMain.on('multi:bounds',(event,id,bounds)=>{if(trusted(event))multiChat.bounds(id,bounds);});
   chat.webContents.on('did-finish-load', () => {
     sendStatus('공식 채팅'); scheduleAccountCheck();
   });
@@ -415,6 +426,7 @@ app.whenReady().then(async () => {
     popup.loadURL(`https://chzzk.naver.com/live/${currentChannel}/chat`).catch(e => sendStatus(e.message));
   });
   win.on('resize', layoutChat);
+  win.on('resize',()=>multiChat.layout());
   win.on('move',scheduleMainSave); win.on('resize',scheduleMainSave);
   win.on('maximize',scheduleMainSave); win.on('unmaximize',scheduleMainSave);
   win.on('close', event => {
@@ -438,6 +450,7 @@ app.whenReady().then(async () => {
     })();
   });
   win.on('closed', () => {
+    multiChat.closeAll();
     captions.stop();
     clearTimeout(accountTimer);
     clearTimeout(mainSaveTimer);

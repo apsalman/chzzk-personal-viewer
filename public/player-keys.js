@@ -24,7 +24,10 @@
     return true;
   }
   function installPlayerKeys(video, notify, fullscreen, doc = document) {
-    doc.addEventListener('keydown', event => handlePlayerKey(event, video, notify, fullscreen), { capture: true });
+    doc.addEventListener('keydown', event => {
+      const multi=doc.defaultView?.multiView;
+      handlePlayerKey(event,multi?.activeVideo||video,notify,multi?.count>1?mode=>multi.fullscreen(mode):fullscreen);
+    }, { capture: true });
   }
   if (typeof module !== 'undefined' && module.exports) module.exports = { handlePlayerKey };
   else root.installPlayerKeys = installPlayerKeys;
