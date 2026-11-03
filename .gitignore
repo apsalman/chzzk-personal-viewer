@@ -1,5 +1,6 @@
 dist/
 .build-cache/
+/*-preview.png
 .desktop-profile/
 *.log
 Recordings/

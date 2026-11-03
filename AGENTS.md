@@ -4,3 +4,4 @@
 - Run the checks appropriate to the change before pushing. Preserve unrelated user changes and do not force-push.
 - Keep login profiles, cookies, logs, recordings, downloads, build caches, and other personal data out of Git. Distribution ZIPs and desktop runtime files remain excluded by `.gitignore`.
 - Update the local desktop distribution when application source changes so that `start-app.cmd` runs the updated version.
+- Keep one-off validation images, fixtures, reports, and temporary runtimes in `.build-cache/`, not Git. Preserve maintained automated tests.
