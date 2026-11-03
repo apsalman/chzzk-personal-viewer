@@ -12,6 +12,7 @@ const { VodDownload } = require('./vod-download.cjs');
 const { Captions } = require('./captions.cjs');
 const { VodCaptionAudio } = require('./vod-captions.cjs');
 const { MultiChat } = require('./multi-chat.cjs');
+const { ChatPopout } = require('./chat-popout.cjs');
 const { normalizeViewingState, readViewingState, saveViewingState } = require('./viewing-state.cjs');
 const { readWindowSettings, fitWindow, saveWindowSettings } = require('./window-settings.cjs');
 
@@ -34,6 +35,7 @@ let pipWindow;
 let pipGesture;
 let recorder, downloader, captions, vodCaptions, captureCommandBusy = false, closingCapture = false;
 let multiChat;
+let chatPopout;
 const popups = new Set();
 function workAreas() {
   const primary = screen.getPrimaryDisplay();
@@ -134,6 +136,7 @@ function guard(contents, { chatWindow = false, popup = null, expectedLogin = fal
 }
 function layoutChat() {
   if (!chat || !win || win.isDestroyed()) return;
+  if(chatPopout?.has('primary'))return;
   const [width, height] = win.getContentSize();
   const b = chatBounds;
   const visible = !!((!playerOnly || b?.fullscreenChat === true) && currentChannel && b?.visible && b.width > 10 && b.height > 10);
@@ -199,13 +202,17 @@ app.whenReady().then(async () => {
   chat = new WebContentsView({ webPreferences: { session: chatSession, contextIsolation: true, nodeIntegration: false, sandbox: true } });
   win.contentView.addChildView(chat); chat.setVisible(false);
   guard(chat.webContents, { chatWindow: true });
+  chatPopout=new ChatPopout({window:win,createWindow:()=>new BrowserWindow({icon:appIcon,width:440,height:820,parent:win,show:false,autoHideMenuBar:true,title:'채팅 · AZZZT',webPreferences:{session:chatSession,contextIsolation:true,nodeIntegration:false,sandbox:true}}),onState:(id,detached,disposed)=>{
+    if(win&&!win.isDestroyed())win.webContents.send('chat:popout-state',{id,detached,disposed});
+    if(!detached&&!disposed){if(id==='primary')layoutChat();else multiChat?.layout(id);}
+  }});
   multiChat=new MultiChat({window:win,
     createView:()=>new WebContentsView({webPreferences:{session:chatSession,contextIsolation:true,nodeIntegration:false,sandbox:true}}),
-    guard:(contents,channel)=>guard(contents,{chatWindow:true,channel})});
-  win.webContents.on('did-start-navigation',(_event,_url,inPlace,mainFrame)=>{if(mainFrame&&!inPlace)multiChat.closeAll();});
+    guard:(contents,channel)=>guard(contents,{chatWindow:true,channel}),isDetached:id=>chatPopout.has(id),onClose:id=>chatPopout.close(id,true)});
+  win.webContents.on('did-start-navigation',(_event,_url,inPlace,mainFrame)=>{if(mainFrame&&!inPlace){chatPopout.close('primary');multiChat.closeAll();}});
   ipcMain.handle('multi:chat',async(event,action,id,channel)=>{
     if(!trusted(event))return;
-    try{if(action==='open')await multiChat.open(id,channel);else if(action==='close')multiChat.close(id);else throw Error('올바르지 않은 채팅 작업입니다.');return {ok:true};}catch(error){return {error:error.message};}
+    try{if(action==='open')await multiChat.open(id,channel);else if(action==='close')multiChat.close(id);else if(action==='detach'){const record=multiChat.views.get(id);if(!record)throw Error('채팅 연결 후 다시 시도하세요.');chatPopout.open(id,record.view);}else if(action==='attach')chatPopout.close(id);else throw Error('올바르지 않은 채팅 작업입니다.');return {ok:true};}catch(error){return {error:error.message};}
   });
   ipcMain.on('multi:bounds',(event,id,bounds)=>{if(trusted(event))multiChat.bounds(id,bounds);});
   chat.webContents.on('did-finish-load', () => {
@@ -419,11 +426,9 @@ app.whenReady().then(async () => {
     const destination = currentChannel ? `https://chzzk.naver.com/live/${currentChannel}/chat` : 'https://chzzk.naver.com/';
     popup.loadURL(`https://nid.naver.com/nidlogin.login?url=${encodeURIComponent(destination)}`).catch(error => sendStatus(error.message));
   });
-  ipcMain.on('chat:popout', event => {
-    if (!trusted(event) || !currentChannel) return;
-    const popup = new BrowserWindow({ icon: appIcon, width: 440, height: 820, parent: win, autoHideMenuBar: true, webPreferences: { session: chatSession, contextIsolation: true, nodeIntegration: false, sandbox: true } });
-    popups.add(popup); popup.on('closed', () => popups.delete(popup)); guard(popup.webContents, { chatWindow: true, popup });
-    popup.loadURL(`https://chzzk.naver.com/live/${currentChannel}/chat`).catch(e => sendStatus(e.message));
+  ipcMain.handle('chat:popout', (event,action='detach') => {
+    if (!trusted(event) || !currentChannel) return {ok:false};
+    try{if(action==='attach')chatPopout.close('primary');else chatPopout.open('primary',chat);return {ok:true,detached:chatPopout.has('primary')};}catch(error){return {ok:false,error:error.message};}
   });
   win.on('resize', layoutChat);
   win.on('resize',()=>multiChat.layout());
@@ -450,6 +455,7 @@ app.whenReady().then(async () => {
     })();
   });
   win.on('closed', () => {
+    chatPopout.closeAll();
     multiChat.closeAll();
     captions.stop();
     clearTimeout(accountTimer);

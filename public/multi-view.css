@@ -34,5 +34,23 @@ body.multi-view.player-only .multi-body{grid-template-columns:minmax(0,1fr);grid
 .multi-chat-slot:has(.vod-chat-list){display:flex;flex-direction:column}
 body.multi-view .multi-tile .screen:fullscreen{width:100vw;height:100vh}
 #multi-status{color:#ffb3a7!important}
+.multi-divider{touch-action:none;background:#1d3027;position:relative;z-index:10;outline-offset:-2px;flex-shrink:0}
+.multi-divider::after{content:'';position:absolute;background:#648a76;border-radius:3px;inset:2px 25%}
+.multi-divider[data-axis=x]{cursor:ew-resize}.multi-divider[data-axis=y]{cursor:ns-resize}
+.multi-divider[data-axis=x]::after{inset:25% 2px}.multi-divider:hover,.multi-divider:focus-visible{background:#00b88a}
+.multi-splitter{position:absolute;z-index:15;background:transparent}.multi-splitter::after{background:#527362}
+.multi-chat-divider{width:100%;height:100%;min-width:0;min-height:0}
+body.multi-resizing-x,body.multi-resizing-x *{cursor:ew-resize!important;user-select:none!important}
+body.multi-resizing-y,body.multi-resizing-y *{cursor:ns-resize!important;user-select:none!important}
+#multi-snap-preview{inset:0;width:100%;height:100%;display:block;border:0;border-radius:0;background:#000b;font-size:12px}
+.multi-preview-tile{position:absolute;display:flex;flex-direction:column;overflow:hidden;background:#10231ff5;border:2px solid #87a8b9;border-radius:6px;box-shadow:0 2px 10px #0009}
+.multi-preview-tile[data-source=true]{border:3px solid #00ffb8;box-shadow:0 0 14px #00d69755}
+.multi-preview-title{height:32px;padding:6px 10px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;background:#233d35;flex-shrink:0}
+.multi-preview-tile[data-source=true] .multi-preview-title::before{content:'이동할 영상 · ';color:#63ffc4}
+.multi-preview-body{flex:1;min-height:0;display:grid;gap:3px;overflow:hidden}
+.multi-preview-body canvas{width:100%;height:100%;min-width:0;min-height:0;object-fit:contain;background:#000}
+.multi-preview-chat{display:grid;place-items:center;min-width:0;min-height:0;background:#213f37;color:#b8d5c9}
+body.multi-view.player-only .multi-body{grid-template-columns:minmax(0,1fr)!important;grid-template-rows:minmax(0,1fr)!important}
+body.multi-view.player-only .multi-chat-divider{display:none}
 @media(max-width:1050px){#multi-board{height:calc(100dvh - 210px)}}
 @media(max-width:740px){#multi-board{height:calc(100dvh - 230px);min-height:560px}body.multi-view #layout{padding:8px}.multi-head{gap:2px}.multi-head button,.multi-head select{padding:4px;font-size:10px}}

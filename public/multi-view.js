@@ -1,11 +1,36 @@
 (() => {
   const layout=document.getElementById('layout'),watch=document.querySelector('.watch'),chat=document.getElementById('chat');
   const api=window.desktopChat,geometry=window.MultiLayout,tiles=new Map();
-  let board,toolbar,primary,settings,watchAnchor,chatAnchor,statusObserver,boardObserver,manualTree=null,serial=0,drag=null,frame=0,selected='primary';
+  let board,toolbar,primary,settings,watchAnchor,chatAnchor,statusObserver,boardObserver,manualTree=null,serial=0,drag=null,resizeDrag=null,frame=0,selected='primary';
+  const splitHandles=new Map();
   const addButton=document.createElement('button');addButton.type='button';addButton.id='add-stream';addButton.textContent='영상 추가 +';addButton.title='주소란의 영상을 현재 영상 옆에 추가합니다';document.getElementById('open').after(addButton);
   function button(text,action,title=text){const node=document.createElement('button');node.type='button';node.textContent=text;node.title=title;node.onclick=action;return node;}
   function ids(){return [...tiles.keys()];}
   function currentTree(){return manualTree||geometry.automatic(ids(),board.clientWidth,board.clientHeight);}
+  function separator(label){const node=document.createElement('div');node.className='multi-divider';node.tabIndex=0;node.setAttribute('role','separator');node.setAttribute('aria-label',label);node.title='드래그로 크기 조절 · 방향키로 미세 조정 · 더블 클릭으로 초기화';return node;}
+  function chatDivider(id){const node=separator('영상과 채팅 크기 조절');node.classList.add('multi-chat-divider');node.dataset.chatResize=id;node.addEventListener('keydown',resizeKey);node.addEventListener('dblclick',()=>{const tile=tiles.get(id);if(tile){tile.chatFraction=.3;schedule();}});return node;}
+  function resizeKey(event){
+    const axis=event.currentTarget.dataset.axis,keys=axis==='x'?['ArrowLeft','ArrowRight']:['ArrowUp','ArrowDown'];
+    if(![...keys,'Home'].includes(event.key))return;event.preventDefault();event.stopPropagation();
+    const change=event.key===keys[0]?-.02:.02,id=event.currentTarget.dataset.chatResize;
+    if(id){const tile=tiles.get(id);tile.chatFraction=event.key==='Home'?.3:Math.max(.12,Math.min(.75,(tile.chatFraction??.3)-change));}
+    else{const path=event.currentTarget.dataset.splitPath,split=geometry.dividers(currentTree(),board.clientWidth,board.clientHeight).find(item=>item.path===path);if(split)manualTree=geometry.resize(currentTree(),path,event.key==='Home'?.5:split.ratio+change);}
+    schedule();
+  }
+  function beginResize(event,handle){
+    const id=handle.dataset.chatResize,axis=handle.dataset.axis;
+    if(id){const tile=tiles.get(id);resizeDrag={kind:'chat',id,axis,side:tile.element.dataset.chatSide,rect:tile.element.querySelector('.multi-body').getBoundingClientRect(),original:tile.chatFraction??.3,pointer:event.pointerId};}
+    else{const path=handle.dataset.splitPath,split=geometry.dividers(currentTree(),board.clientWidth,board.clientHeight).find(item=>item.path===path);if(!split)return;const tree=currentTree();manualTree=tree;resizeDrag={kind:'split',path,axis,area:split.area,original:tree,pointer:event.pointerId};}
+    board.setPointerCapture(event.pointerId);window.multiViewDragging=true;document.body.classList.add('multi-resizing-'+axis);report();event.preventDefault();
+  }
+  function moveResize(event){
+    const resize=resizeDrag;if(!resize||event.pointerId!==resize.pointer)return;
+    if(resize.kind==='chat'){
+      const rect=resize.rect,length=(resize.axis==='x'?rect.width:rect.height)-8,offset=resize.axis==='x'?event.clientX-rect.left:event.clientY-rect.top;
+      tiles.get(resize.id).chatFraction=Math.max(.12,Math.min(.75,1-offset/Math.max(1,length)));
+    }else{const rect=board.getBoundingClientRect(),area=resize.area,offset=resize.axis==='x'?event.clientX-rect.left-area.x:event.clientY-rect.top-area.y,length=(resize.axis==='x'?area.width:area.height)-8;manualTree=geometry.resize(manualTree,resize.path,offset/Math.max(1,length));}
+    event.preventDefault();schedule();
+  }
   function schedule(){if(!frame)frame=requestAnimationFrame(()=>{frame=0;reflow();});}
   function report(){
     reportChatBounds();
@@ -15,7 +40,7 @@
     for(const tile of tiles.values()){
       if(tile.primary||!tile.channel)continue;
       const r=tile.slot.getBoundingClientRect(),top=Math.max(0,r.top),bottom=Math.min(innerHeight,r.bottom);
-      api.multiBounds(tile.id,{x:Math.max(0,r.left),y:top,width:Math.max(0,Math.min(innerWidth,r.right)-Math.max(0,r.left)),height:Math.max(0,bottom-top),visible:allowed&&tile.chatVisible&&!window.multiViewDragging&&r.width>0});
+      api.multiBounds(tile.id,{x:Math.max(0,r.left),y:top,width:Math.max(0,Math.min(innerWidth,r.right)-Math.max(0,r.left)),height:Math.max(0,bottom-top),visible:allowed&&tile.chatVisible&&!tile.detached&&!window.multiViewDragging&&r.width>0});
     }
   }
   function reflow(){
@@ -24,10 +49,25 @@
     for(const tile of tiles.values()){
       const b=bounds[tile.id];if(!b)continue;
       Object.assign(tile.element.style,{left:b.x+'px',top:b.y+'px',width:b.width+'px',height:b.height+'px'});
-      const visible=tile.primary?!layout.classList.contains('no-chat'):tile.chatVisible;
-      tile.element.dataset.chat=String(visible);tile.element.dataset.chatSide=b.width/Math.max(1,b.height)>1.9?'right':'bottom';
-      tile.chatButton.textContent=visible?'채팅 ON':'채팅 OFF';tile.chatButton.setAttribute('aria-pressed',String(visible));
+      const detached=tile.primary?primaryChatDetached:tile.detached;
+      const visible=!detached&&(tile.primary?!layout.classList.contains('no-chat'):tile.chatVisible);
+      const side=resizeDrag?.kind==='chat'&&resizeDrag.id===tile.id?resizeDrag.side:b.width/Math.max(1,b.height)>1.9?'right':'bottom';
+      tile.element.dataset.chat=String(visible);tile.element.dataset.chatSide=side;
+      tile.chatButton.textContent=detached?'채팅 되돌리기':visible?'채팅 ON':'채팅 OFF';tile.chatButton.setAttribute('aria-pressed',String(visible));
+      if(tile.popoutButton){tile.popoutButton.textContent=detached?'채팅 되돌리기':'별도 창 ↗';tile.popoutButton.disabled=tile.primary?!activeChannel||vodMode:!tile.channel;}
+      const fraction=tile.chatFraction??.3,body=tile.element.querySelector('.multi-body');
+      body.style.gridTemplateColumns=visible&&side==='right'?`minmax(0,${1-fraction}fr) 8px minmax(0,${fraction}fr)`:'minmax(0,1fr)';
+      body.style.gridTemplateRows=visible&&side==='bottom'?`minmax(0,${1-fraction}fr) 8px minmax(0,${fraction}fr)`:'minmax(0,1fr)';
+      tile.divider.hidden=!visible;tile.divider.dataset.axis=side==='right'?'x':'y';tile.divider.setAttribute('aria-orientation',side==='right'?'vertical':'horizontal');tile.divider.setAttribute('aria-valuenow',String(Math.round((1-fraction)*100)));
     }
+    const splits=geometry.dividers(currentTree(),board.clientWidth,board.clientHeight),used=new Set();
+    for(const split of splits){
+      used.add(split.path);let handle=splitHandles.get(split.path);
+      if(!handle){handle=separator('영상 사이 크기 조절');handle.classList.add('multi-splitter');handle.dataset.splitPath=split.path;handle.addEventListener('keydown',resizeKey);handle.addEventListener('dblclick',()=>{manualTree=geometry.resize(currentTree(),split.path,.5);schedule();});board.append(handle);splitHandles.set(split.path,handle);}
+      handle.dataset.axis=split.axis;handle.setAttribute('aria-orientation',split.axis==='x'?'vertical':'horizontal');handle.setAttribute('aria-valuenow',String(Math.round(split.ratio*100)));
+      Object.assign(handle.style,{left:split.x+'px',top:split.y+'px',width:split.width+'px',height:split.height+'px'});
+    }
+    for(const [path,handle] of splitHandles)if(!used.has(path)){handle.remove();splitHandles.delete(path);}
     requestAnimationFrame(report);
   }
   function enter(){
@@ -46,18 +86,25 @@
     const titleObserver=new MutationObserver(()=>{handle.textContent='메인 · '+document.getElementById('title').textContent;});titleObserver.observe(document.getElementById('title'),{childList:true,subtree:true,characterData:true});
     const primaryChat=button('채팅 ON',()=>{originalToggle();schedule();});
     const settingsButton=button('설정',()=>{settings.classList.toggle('open');settingsButton.setAttribute('aria-expanded',String(settings.classList.contains('open')));});settingsButton.setAttribute('aria-expanded','false');
-    head.append(handle,primaryChat,settingsButton);
-    const body=document.createElement('div');body.className='multi-body';body.append(watch,chat);primary.append(head,body);board.append(primary);
+    const primaryPopout=button('별도 창 ↗',()=>document.getElementById('popout').click());
+    const quality=document.createElement('select');quality.setAttribute('aria-label','메인 영상 화질');quality.id='multi-primary-quality';
+    const sourceQuality=document.getElementById('quality');
+    const syncQuality=()=>{quality.replaceChildren(...[...sourceQuality.options].map(option=>new Option(option.textContent,option.value,false,option.selected)));quality.disabled=sourceQuality.disabled;};syncQuality();
+    const qualityObserver=new MutationObserver(syncQuality);qualityObserver.observe(sourceQuality,{childList:true,subtree:true,attributes:true});sourceQuality.addEventListener('change',syncQuality);
+    quality.onchange=()=>{sourceQuality.value=quality.value;sourceQuality.dispatchEvent(new Event('change',{bubbles:true}));};
+    head.append(handle,quality,primaryChat,primaryPopout,settingsButton);
+    const body=document.createElement('div');body.className='multi-body';const primaryDivider=chatDivider('primary');body.append(watch,primaryDivider,chat);primary.append(head,body);board.append(primary);
     settings=document.createElement('div');settings.className='multi-primary-settings';
     for(const child of [...watch.children])if(!child.classList.contains('screen'))settings.append(child);
     watch.append(settings);
-    tiles.set('primary',{id:'primary',primary:true,element:primary,chatButton:primaryChat,observer:titleObserver});
+    tiles.set('primary',{id:'primary',primary:true,element:primary,chatButton:primaryChat,popoutButton:primaryPopout,divider:primaryDivider,observer:titleObserver,qualityObserver,syncQuality});
     board.addEventListener('pointerdown',beginDrag,{capture:true});board.addEventListener('pointermove',moveDrag);for(const name of ['pointerup','pointercancel','lostpointercapture'])board.addEventListener(name,finishDrag);
     boardObserver=new ResizeObserver(schedule);boardObserver.observe(board);schedule();
   }
   function leave(){
     if(!board)return;
     const record=tiles.get('primary');record?.observer.disconnect();
+    record?.qualityObserver.disconnect();document.getElementById('quality').removeEventListener('change',record.syncQuality);splitHandles.clear();
     statusObserver?.disconnect();
     boardObserver?.disconnect();
     for(const child of [...settings.children])watch.append(child);settings.remove();
@@ -65,10 +112,18 @@
     requestAnimationFrame(reportChatBounds);
   }
   const originalToggle=document.getElementById('toggle').onclick;
-  document.getElementById('toggle').onclick=()=>{originalToggle();if(board){const on=!layout.classList.contains('no-chat');for(const tile of tiles.values())if(!tile.primary)tile.chatVisible=on;schedule();}};
+  document.getElementById('toggle').onclick=()=>{if(primaryChatDetached){originalToggle();return;}originalToggle();if(board){const on=!layout.classList.contains('no-chat');for(const tile of tiles.values())if(!tile.primary)tile.chatVisible=on;schedule();}};
+  window.addEventListener('primary-chat-detached',schedule);
+  api?.onChatPopout?.(state=>{if(state.id==='primary'||state.disposed)return;const tile=tiles.get(state.id);if(tile){tile.detached=state.detached;if(!state.detached)tile.chatVisible=true;schedule();}});
+  async function popout(tile){
+    if(api?.multiChat){const result=await api.multiChat(tile.detached?'attach':'detach',tile.id);if(result?.error){tile.note.hidden=false;tile.note.textContent=result.error;}}
+    else if(tile.browserPopup&&!tile.browserPopup.closed){tile.browserPopup.close();}
+    else if(tile.channel){const popup=window.open(`https://chzzk.naver.com/live/${tile.channel}/chat`,'chat-'+tile.id,'popup,width=420,height=820');if(popup){tile.browserPopup=popup;tile.detached=true;schedule();tile.popupTimer=setInterval(()=>{if(popup.closed){clearInterval(tile.popupTimer);tile.detached=false;schedule();}},1000);}}
+  }
   function closeTile(id){
     const tile=tiles.get(id);if(!tile||tile.primary)return;
     tile.closed=true;tile.hls?.destroy();tile.video.pause();tile.video.removeAttribute('src');tile.video.load();tile.vodChat?.destroy();tile.element.remove();tiles.delete(id);api?.multiChat?.('close',id).catch(()=>{});
+    clearInterval(tile.popupTimer);if(tile.browserPopup&&!tile.browserPopup.closed)tile.browserPopup.close();
     if(selected===id){selected='primary';primary.classList.add('selected');}
     if(manualTree)manualTree=geometry.remove(manualTree,id);
     if(tiles.size===1)leave();else schedule();
@@ -119,11 +174,12 @@
       const speed=document.createElement('select');speed.setAttribute('aria-label','추가 다시보기 재생 속도');for(const n of [.5,.75,1,1.25,1.5,2])speed.add(new Option(n+'배',String(n),n===1,n===1));
       const slot=document.createElement('div');slot.className='multi-chat-slot';
       const side=document.createElement('aside');side.className='multi-chat';const chatHead=document.createElement('div');chatHead.className='chat-head';chatHead.textContent='채팅 · '+(data.channel||data.title||'추가 영상');side.append(chatHead,slot);
-      const body=document.createElement('div');body.className='multi-body';body.append(screen,side);
-      const tile={id,address:value,element,video:media,quality,speed,slot,note,chatVisible:true,closed:false,channel:null,hls:null};
-      const chatButton=tile.chatButton=button('채팅 ON',()=>{tile.chatVisible=!tile.chatVisible;schedule();});
+      const body=document.createElement('div');body.className='multi-body';const divider=chatDivider(id);body.append(screen,divider,side);
+      const tile={id,address:value,element,video:media,quality,speed,slot,note,divider,chatVisible:true,closed:false,channel:null,hls:null,detached:false};
+      const chatButton=tile.chatButton=button('채팅 ON',()=>{if(tile.detached){popout(tile);return;}tile.chatVisible=!tile.chatVisible;schedule();});
+      tile.popoutButton=button('별도 창 ↗',()=>popout(tile));
       const muteButton=button('음소거',()=>{media.muted=!media.muted;});media.addEventListener('volumechange',()=>{muteButton.textContent=media.muted?'음소거':'소리 ON';muteButton.setAttribute('aria-pressed',String(!media.muted));});
-      head.append(handle,quality,speed,muteButton,chatButton,button('↻',()=>reconnect(tile),'영상 다시 연결'),button('×',()=>closeTile(id),'추가 영상 닫기'));
+      head.append(handle,quality,speed,muteButton,chatButton,tile.popoutButton,button('↻',()=>reconnect(tile),'영상 다시 연결'),button('×',()=>closeTile(id),'추가 영상 닫기'));
       quality.onchange=()=>{if(tile.hls)tile.hls.currentLevel=Number(quality.value);};speed.onchange=()=>{media.playbackRate=Number(speed.value);};
       media.addEventListener('playing',()=>{note.hidden=true;});
       element.append(head,body);board.append(element);tiles.set(id,tile);if(manualTree)manualTree={axis:board.clientWidth/board.clientHeight>1.3?'x':'y',a:manualTree,b:id};play(tile,data);
@@ -131,7 +187,8 @@
   }
   addButton.onclick=()=>add();
   function beginDrag(event){
-    if(event.button!==0||drag)return;
+    if(event.button!==0||drag||resizeDrag)return;
+    const divider=event.target.closest('.multi-divider');if(divider){beginResize(event,divider);return;}
     const tile=event.target.closest('.multi-tile');if(!tile)return;
     selected=tile.dataset.id;for(const item of tiles.values())item.element.classList.toggle('selected',item.id===selected);
     const handle=event.target.closest('.multi-handle'),media=event.target.closest('video');if(!handle&&!media)return;
@@ -139,6 +196,7 @@
     drag={id:tile.dataset.id,pointer:event.pointerId,x:event.clientX,y:event.clientY,active:false,preview:null};board.setPointerCapture(event.pointerId);event.preventDefault();
   }
   function moveDrag(event){
+    if(resizeDrag){moveResize(event);return;}
     if(!drag||event.pointerId!==drag.pointer)return;
     if(!drag.active&&Math.hypot(event.clientX-drag.x,event.clientY-drag.y)<8)return;
     if(!drag.active){drag.active=true;window.multiViewDragging=true;document.body.classList.add('multi-dragging');report();}
@@ -151,15 +209,36 @@
     const {r,tile}=target,x=(event.clientX-r.left)/r.width,y=(event.clientY-r.top)/r.height;
     const distances={left:x,right:1-x,top:y,bottom:1-y};const edge=Object.keys(distances).sort((a,b)=>distances[a]-distances[b])[0];
     drag.preview=geometry.dock(currentTree(),drag.id,tile.id,edge);
-    const b=geometry.rectangles(drag.preview,board.clientWidth,board.clientHeight)[drag.id];
-    preview.hidden=false;Object.assign(preview.style,{left:b.x+'px',top:b.y+'px',width:b.width+'px',height:b.height+'px'});preview.textContent={left:'왼쪽에 배치',right:'오른쪽에 배치',top:'위에 배치',bottom:'아래에 배치'}[edge];
+    preview.hidden=false;
+    const future=geometry.rectangles(drag.preview,board.clientWidth,board.clientHeight);
+    for(const item of tiles.values()){
+      let ghost=preview.querySelector(`[data-preview-id="${item.id}"]`);
+      if(!ghost){
+        ghost=document.createElement('div');ghost.className='multi-preview-tile';ghost.dataset.previewId=item.id;ghost.dataset.source=String(item.id===drag.id);
+        const title=document.createElement('div');title.className='multi-preview-title';title.textContent=item.element.querySelector('.multi-handle').textContent;
+        const content=document.createElement('div');content.className='multi-preview-body';
+        const canvas=document.createElement('canvas');canvas.width=480;canvas.height=270;
+        try{canvas.getContext('2d').drawImage(item.video||video,0,0,480,270);}catch{}
+        const placeholder=document.createElement('div');placeholder.className='multi-preview-chat';placeholder.textContent='채팅';content.append(canvas,placeholder);ghost.append(title,content);preview.append(ghost);
+      }
+      const b=future[item.id],hasChat=item.primary?!primaryChatDetached&&!layout.classList.contains('no-chat'):item.chatVisible&&!item.detached;
+      Object.assign(ghost.style,{left:b.x+'px',top:b.y+'px',width:b.width+'px',height:b.height+'px'});
+      ghost.querySelector('.multi-preview-chat').hidden=!hasChat;
+      const fraction=item.chatFraction??.3,content=ghost.querySelector('.multi-preview-body'),right=b.width/Math.max(1,b.height)>1.9;
+      content.style.gridTemplateColumns=hasChat&&right?`${1-fraction}fr ${fraction}fr`:'minmax(0,1fr)';content.style.gridTemplateRows=hasChat&&!right?`${1-fraction}fr ${fraction}fr`:'minmax(0,1fr)';
+    }
+    preview.setAttribute('aria-label','놓으면 표시된 모든 영상의 배치가 적용됩니다. Escape로 취소');
   }
   function finishDrag(event){
+    if(resizeDrag&&event.pointerId===resizeDrag.pointer){
+      if(event.type!=='pointerup'){if(resizeDrag.kind==='chat')tiles.get(resizeDrag.id).chatFraction=resizeDrag.original;else manualTree=resizeDrag.original;}
+      resizeDrag=null;window.multiViewDragging=false;document.body.classList.remove('multi-resizing-x','multi-resizing-y');schedule();return;
+    }
     if(!drag||event.pointerId!==drag.pointer)return;
     if(event.type==='pointerup'&&drag.preview)manualTree=drag.preview;
     drag=null;window.multiViewDragging=false;document.body.classList.remove('multi-dragging');document.getElementById('multi-snap-preview')?.remove();schedule();
   }
-  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&drag)finishDrag({pointerId:drag.pointer,type:'pointercancel'});});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&(drag||resizeDrag))finishDrag({pointerId:(drag||resizeDrag).pointer,type:'pointercancel'});});
   window.addEventListener('resize',schedule);window.addEventListener('scroll',()=>{if(board)report();},{passive:true});document.addEventListener('fullscreenchange',schedule);
   window.addEventListener('beforeunload',()=>{for(const tile of tiles.values())if(!tile.primary){tile.hls?.destroy();tile.video.pause();tile.vodChat?.destroy();}});
   window.multiView={add,close:closeTile,automatic:()=>{manualTree=null;schedule();},get count(){return tiles.size||1;},get activeVideo(){return tiles.get(selected)?.video||video;},fullscreen:mode=>{

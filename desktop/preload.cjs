@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('desktopChat', {
   onCapture: callback => ipcRenderer.on('capture:state', (_event, state) => callback(state)),
   logout: () => ipcRenderer.invoke('chat:logout'),
   onAccount: callback => ipcRenderer.on('chat:account', (_event, state) => callback(state)),
-  popout: () => ipcRenderer.send('chat:popout'),
+  popout: action => ipcRenderer.invoke('chat:popout',action),
+  onChatPopout: callback => ipcRenderer.on('chat:popout-state',(_event,state)=>callback(state)),
   onStatus: callback => ipcRenderer.on('chat:status', (_event, text) => callback(text))
 });

@@ -258,19 +258,29 @@ video.addEventListener('ratechange', () => {
     preferredVodSpeed = video.playbackRate; $('playback-speed').value = String(preferredVodSpeed);
   }
 });
+let primaryChatDetached=false;
+let primaryChatPopup=null;
+function updatePrimaryChatDetached(detached){
+  primaryChatDetached=detached;$('layout').classList.toggle('no-chat',detached);
+  $('toggle').textContent=detached?'채팅 되돌리기':'채팅 ON';$('toggle').setAttribute('aria-pressed',String(!detached));
+  $('popout').textContent=detached?'채팅 되돌리기':'별도 창 ↗';
+  window.dispatchEvent(new CustomEvent('primary-chat-detached',{detail:detached}));requestAnimationFrame(reportChatBounds);
+}
+window.desktopChat?.onChatPopout?.(state=>{if(state.id==='primary'&&!state.disposed)updatePrimaryChatDetached(state.detached);});
 $('toggle').onclick = () => {
+  if(primaryChatDetached){if(window.desktopChat)window.desktopChat.popout('attach');else{primaryChatPopup?.close();updatePrimaryChatDetached(false);}return;}
   const off = $('layout').classList.toggle('no-chat');
   $('toggle').textContent = off ? '채팅 OFF' : '채팅 ON'; $('toggle').setAttribute('aria-pressed', String(!off));
   requestAnimationFrame(reportChatBounds);
 };
-$('popout').onclick = () => {
-  if (window.desktopChat) return window.desktopChat.popout();
-  if (activeChannel) window.open(`https://chzzk.naver.com/live/${activeChannel}/chat`, 'chzzk-chat', 'popup,width=420,height=820');
+$('popout').onclick = async () => {
+  if (window.desktopChat){const result=await window.desktopChat.popout(primaryChatDetached?'attach':'detach');if(result?.error)status(result.error,true);return;}
+  if (activeChannel){const popup=window.open(`https://chzzk.naver.com/live/${activeChannel}/chat`, 'chzzk-chat', 'popup,width=420,height=820');if(popup){primaryChatPopup=popup;updatePrimaryChatDetached(true);const timer=setInterval(()=>{if(popup.closed){clearInterval(timer);primaryChatPopup=null;updatePrimaryChatDetached(false);}},1000);}}
 };
 function reportChatBounds() {
   if (!window.desktopChat) return;
   const r = $('desktop-chat-slot').getBoundingClientRect();
-  const fullChat = document.fullscreenElement === $('layout') && $('layout').classList.contains('fullscreen-chat');
+  const fullChat = document.fullscreenElement === $('layout') && ($('layout').classList.contains('fullscreen-chat') || document.body.classList.contains('multi-view'));
   const headerBottom = document.fullscreenElement ? 0 : document.querySelector('header').getBoundingClientRect().bottom;
   const top = Math.max(0, headerBottom, r.top), bottom = Math.min(window.innerHeight, r.bottom);
   const visibleMode = fullChat || (!document.fullscreenElement && !document.body.classList.contains('player-only') && !$('layout').classList.contains('no-chat'));

@@ -19,3 +19,9 @@ test('native chats are clipped to the window and hidden for invalid bounds or dr
  manager.bounds('multi-1',{x:NaN,y:0,width:300,height:200,visible:true});assert.equal(views[0].visible,false);
  await assert.rejects(manager.open('multi-3','https://example.com'),/채팅/);manager.closeAll();
 });
+test('detached chats keep their popup bounds when the inline slot changes',async()=>{
+ const {manager,views}=fixture();await manager.open('multi-1','a'.repeat(32));
+ manager.isDetached=()=>true;views[0].visible=true;views[0].bounds={x:0,y:0,width:440,height:800};
+ manager.bounds('multi-1',{x:0,y:0,width:0,height:0,visible:false});
+ assert.equal(views[0].visible,true);assert.equal(views[0].bounds.width,440);manager.closeAll();
+});
