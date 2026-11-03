@@ -6,6 +6,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import network from './desktop/network.cjs';
+import directory from './desktop/live-directory.cjs';
 
 export function videoId(value) {
   try { const u = new URL(value); return u.protocol === 'https:' && u.hostname === 'chzzk.naver.com' && !u.username && !u.password ? u.pathname.match(/^\/video\/(\d+)\/?$/)?.[1] || null : null; } catch { return null; }
@@ -84,6 +85,7 @@ async function upstream(url, headers = {}) {
   throw new Error('영상 서버의 주소 이동이 너무 많습니다.');
 }
 export function createApp({ recorder } = {}) {
+  const directoryCache=new Map();
   const sources = new Map(), ids = new Map(), vodContexts = new Map();
   function register(value, context) {
     const url = mediaURL(value);
@@ -103,6 +105,12 @@ export function createApp({ recorder } = {}) {
       const u = new URL(req.url, 'http://' + req.headers.host);
       if (req.method !== 'GET') return json(405, { error: 'GET만 지원합니다.' });
       if (u.pathname === '/api/health') return json(200, { ok: true });
+      if(u.pathname==='/api/lives'){
+        let address;try{address=directory.directoryURL(u.searchParams.get('sort')||'viewers',u.searchParams.get('next')||'');}catch(error){return json(400,{error:error.message});}
+        const cached=directoryCache.get(address);if(cached&&Date.now()-cached.time<15000)return json(200,cached.data);
+        const response=await upstream(address);if(!response.ok)return json(502,{error:'방송 목록을 가져오지 못했습니다. 잠시 후 새로고침하세요.'});
+        const data=directory.normalizeLives(await response.json());directoryCache.set(address,{time:Date.now(),data});if(directoryCache.size>128)directoryCache.delete(directoryCache.keys().next().value);return json(200,data);
+      }
       if (u.pathname === '/api/vod-chat') {
         const id = u.searchParams.get('id'), time = Number(u.searchParams.get('time'));
         if (!/^\d+$/.test(id || '') || !Number.isSafeInteger(time) || time < 0) return json(400, { error: '잘못된 다시보기 채팅 요청입니다.' });
@@ -220,6 +228,9 @@ export function createApp({ recorder } = {}) {
       files['/multi-view.js'] = ['multi-view.js', 'text/javascript'];
       files['/multi-layout.js'] = ['multi-layout.js', 'text/javascript'];
       files['/multi-view.css'] = ['multi-view.css', 'text/css'];
+      files['/home.js'] = ['home.js', 'text/javascript'];
+      files['/home-rules.js'] = ['home-rules.js', 'text/javascript'];
+      files['/home.css'] = ['home.css', 'text/css'];
       files['/caption-timeline.js'] = ['caption-timeline.js', 'text/javascript'];
       files['/caption-worklet.js'] = ['caption-worklet.js', 'text/javascript'];
       files['/assets/logo.png'] = ['assets/logo.png', 'image/png'];

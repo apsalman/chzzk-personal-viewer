@@ -232,6 +232,12 @@ app.whenReady().then(async () => {
   ipcMain.handle('chat:account', async event => trusted(event) ? refreshAccount() : null);
   ipcMain.handle('capture:state', event => trusted(event) ? recorder.state() : null);
   ipcMain.handle('caption:state', event => trusted(event) ? captionState() : null);
+  const homeSettingsFile=path.join(profile,'home-settings.json');
+  ipcMain.handle('home:settings',(event,value)=>{
+    if(!trusted(event))return null;
+    if(value!==undefined){if(!value||typeof value!=='object'||JSON.stringify(value).length>300000)throw Error('목록 설정이 올바르지 않습니다.');fs.mkdirSync(profile,{recursive:true});fs.writeFileSync(homeSettingsFile,JSON.stringify(value));return true;}
+    try{return JSON.parse(fs.readFileSync(homeSettingsFile,'utf8'));}catch{return null;}
+  });
   const captionPositionFile=path.join(profile,'caption-position.json');
   const validCaptionPosition=value=>value&&Number.isFinite(value.x)&&Number.isFinite(value.y)&&value.x>=0&&value.x<=1&&value.y>=0&&value.y<=1;
   ipcMain.handle('caption:position',event=>{

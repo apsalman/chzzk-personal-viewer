@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('desktopChat', {
   reload: () => ipcRenderer.send('chat:reload'),
   login: () => ipcRenderer.send('chat:login'),
   account: () => ipcRenderer.invoke('chat:account'),
+  homeSettings: value => ipcRenderer.invoke('home:settings',value),
   following: () => ipcRenderer.invoke('chat:following'),
   lastAddress: () => ipcRenderer.invoke('settings:last-address'),
   viewingState: () => ipcRenderer.invoke('settings:viewing-state'),

@@ -25,6 +25,7 @@
   }
   function installPlayerKeys(video, notify, fullscreen, doc = document) {
     doc.addEventListener('keydown', event => {
+      if(doc.body?.classList.contains('home-mode'))return;
       const multi=doc.defaultView?.multiView;
       handlePlayerKey(event,multi?.activeVideo||video,notify,multi?.count>1?mode=>multi.fullscreen(mode):fullscreen);
     }, { capture: true });

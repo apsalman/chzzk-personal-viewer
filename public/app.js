@@ -227,6 +227,7 @@ async function openStream(value = $('address').value.trim(), manual = false, res
     $('source').replaceChildren(...data.sources.map((s, i) => new Option(s.name, String(i))));
     $('source').hidden = data.sources.length < 2;
     await playSource(data.sources[0].url, run);
+    if(run===generation)window.dispatchEvent(new Event('viewer-stream-opened'));
   } catch (error) { if (run === generation) status(error.message, true); }
   finally { if (run === generation) $('open').disabled = false; }
 }

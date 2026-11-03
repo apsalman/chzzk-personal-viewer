@@ -160,6 +160,7 @@
   };
   el('caption-toggle').title='자막 켜기/끄기 (C)';
   document.addEventListener('keydown',event=>{
+    if(document.body.classList.contains('home-mode'))return;
     if(event.defaultPrevented||event.repeat||event.isComposing||event.keyCode===229||event.ctrlKey||event.altKey||event.metaKey)return;
     if(event.code!=='KeyC'&&!['c','C'].includes(event.key))return;
     if(event.target?.closest?.('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"],[role="combobox"],[role="menu"]'))return;
