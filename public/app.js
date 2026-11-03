@@ -313,6 +313,8 @@ const splitter = $('splitter');
 let panelWidth = Number(localStorage.getItem('chzzk-chat-width')) || 360;
 function resizePanels(width, save = false) {
   const layout = $('layout');
+  // The home screen hides this layout; its zero width must not shrink the saved split.
+  if (!layout.clientWidth || document.body.classList.contains('multi-view')) return;
   const available = layout.clientWidth - parseFloat(getComputedStyle(layout).paddingLeft) - parseFloat(getComputedStyle(layout).paddingRight);
   const maximum = Math.max(260, Math.min(available * .6, available - 360));
   panelWidth = Math.round(Math.max(260, Math.min(maximum, width)));
