@@ -11,6 +11,7 @@ const { Recorder } = require('./recorder.cjs');
 const { VodDownload } = require('./vod-download.cjs');
 const { Captions } = require('./captions.cjs');
 const { VodCaptionAudio } = require('./vod-captions.cjs');
+const { LiteMode } = require('./lite-mode.cjs');
 const { MultiChat } = require('./multi-chat.cjs');
 const { ChatPopout } = require('./chat-popout.cjs');
 const { normalizeViewingState, readViewingState, saveViewingState } = require('./viewing-state.cjs');
@@ -35,7 +36,7 @@ let pipWindow;
 let pipGesture;
 let recorder, downloader, captions, vodCaptions, captureCommandBusy = false, closingCapture = false;
 let multiChat;
-let chatPopout;
+let chatPopout,liteController,liteMode=false;
 const popups = new Set();
 function workAreas() {
   const primary = screen.getPrimaryDisplay();
@@ -65,7 +66,7 @@ function publishAccount() {
   return state;
 }
 async function refreshAccount() {
-  if (accountBusy || !chatSession) return publishAccount();
+  if (liteMode || accountBusy || !chatSession) return publishAccount();
   const revision = ++accountRevision;
   try {
     const value = await readLoginState(chatSession);
@@ -76,6 +77,7 @@ async function refreshAccount() {
   return publishAccount();
 }
 function scheduleAccountCheck() {
+  if(liteMode)return;
   clearTimeout(accountTimer);
   accountTimer = setTimeout(refreshAccount, 300);
 }
@@ -89,7 +91,7 @@ function authDiagnostic(kind, value = '', code = '') {
   } catch {}
 }
 function restoreChannelChat(contents = chat?.webContents, channel = currentChannel) {
-  if (!contents || contents.isDestroyed() || !channel) return;
+  if (liteMode || !contents || contents.isDestroyed() || !channel) return;
   const target = `https://chzzk.naver.com/live/${channel}/chat`;
   if (contents.getURL() === target) contents.reload();
   else contents.loadURL(target).catch(error => sendStatus(error.message));
@@ -146,7 +148,21 @@ function layoutChat() {
     chat.setBounds({ x, y, width: Math.max(1, Math.min(Math.round(b.width), width - x)), height: Math.max(1, Math.min(Math.round(b.height), height - y)) });
   }
 }
+function ensurePrimaryChat(){
+  if(chat&&!chat.webContents.isDestroyed())return;
+  chat = new WebContentsView({ webPreferences: { session: chatSession, contextIsolation: true, nodeIntegration: false, sandbox: true } });
+  win.contentView.addChildView(chat); chat.setVisible(false);
+  guard(chat.webContents, { chatWindow: true });
+  chat.webContents.on('did-finish-load', () => {
+    sendStatus('공식 채팅'); scheduleAccountCheck();
+  });
+  chat.webContents.on('did-fail-load', (_e, code, description, _url, mainFrame) => {
+    if (mainFrame && code !== -3) sendStatus(`채팅 연결 실패: ${description}. 채팅 새로고침을 눌러 주세요.`);
+  });
+}
 async function openChat(id) {
+  if(liteMode)return;
+  ensurePrimaryChat();
   if (!/^[a-f\d]{32}$/i.test(id)) throw new Error('잘못된 채널 ID입니다.');
   const changed = currentChannel !== id;
   currentChannel = id;
@@ -199,9 +215,7 @@ app.whenReady().then(async () => {
     title: '아자자잣 · Chzzk Local Viewer', backgroundColor: '#101214', show: false,
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, autoplayPolicy: 'no-user-gesture-required' }
   });
-  chat = new WebContentsView({ webPreferences: { session: chatSession, contextIsolation: true, nodeIntegration: false, sandbox: true } });
-  win.contentView.addChildView(chat); chat.setVisible(false);
-  guard(chat.webContents, { chatWindow: true });
+  ensurePrimaryChat();
   chatPopout=new ChatPopout({window:win,createWindow:()=>new BrowserWindow({icon:appIcon,width:440,height:820,parent:win,show:false,autoHideMenuBar:true,title:'채팅 · AZZZT',webPreferences:{session:chatSession,contextIsolation:true,nodeIntegration:false,sandbox:true}}),onState:(id,detached,disposed)=>{
     if(win&&!win.isDestroyed())win.webContents.send('chat:popout-state',{id,detached,disposed});
     if(!detached&&!disposed){if(id==='primary')layoutChat();else multiChat?.layout(id);}
@@ -212,19 +226,24 @@ app.whenReady().then(async () => {
   win.webContents.on('did-start-navigation',(_event,_url,inPlace,mainFrame)=>{if(mainFrame&&!inPlace){chatPopout.close('primary');multiChat.closeAll();}});
   ipcMain.handle('multi:chat',async(event,action,id,channel)=>{
     if(!trusted(event))return;
-    try{if(action==='open')await multiChat.open(id,channel);else if(action==='close')multiChat.close(id);else if(action==='detach'){const record=multiChat.views.get(id);if(!record)throw Error('채팅 연결 후 다시 시도하세요.');chatPopout.open(id,record.view);}else if(action==='attach')chatPopout.close(id);else throw Error('올바르지 않은 채팅 작업입니다.');return {ok:true};}catch(error){return {error:error.message};}
+    try{if(liteMode)throw Error('Lite 모드에서는 채팅을 사용할 수 없습니다.');if(action==='open')await multiChat.open(id,channel);else if(action==='close')multiChat.close(id);else if(action==='detach'){const record=multiChat.views.get(id);if(!record)throw Error('채팅 연결 후 다시 시도하세요.');chatPopout.open(id,record.view);}else if(action==='attach')chatPopout.close(id);else throw Error('올바르지 않은 채팅 작업입니다.');return {ok:true};}catch(error){return {error:error.message};}
   });
   ipcMain.on('multi:bounds',(event,id,bounds)=>{if(trusted(event))multiChat.bounds(id,bounds);});
-  chat.webContents.on('did-finish-load', () => {
-    sendStatus('공식 채팅'); scheduleAccountCheck();
-  });
-  chat.webContents.on('did-fail-load', (_e, code, description, _url, mainFrame) => {
-    if (mainFrame && code !== -3) sendStatus(`채팅 연결 실패: ${description}. 채팅 새로고침을 눌러 주세요.`);
-  });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (event, url) => { if (new URL(url).origin !== origin) event.preventDefault(); });
+  liteController=new LiteMode({recorder,downloader,captions,vodCaptions,setEnabled:enabled=>{liteMode=enabled;accountRevision++;clearTimeout(accountTimer);},closeViews:()=>{
+    currentChannel=null;chatPopout.close('primary');multiChat.closeAll();
+    if(chat){win.contentView.removeChildView(chat);if(!chat.webContents.isDestroyed())chat.webContents.close();chat=null;}
+    if(pipWindow&&!pipWindow.isDestroyed())pipWindow.close();
+    for(const popup of popups)if(!popup.isDestroyed())popup.close();
+  }});
+  ipcMain.handle('player:lite',async(event,enabled)=>{
+    if(!trusted(event)||typeof enabled!=='boolean')return {error:'잘못된 Lite 모드 요청입니다.'};
+    if(captureCommandBusy)return {error:'녹화 작업이 끝난 뒤 다시 시도해 주세요.'};
+    try{await liteController.set(enabled);return {enabled:liteMode};}catch(error){return {error:error.message};}
+  });
   ipcMain.handle('chat:open', async (event, id) => { if (!trusted(event)) return; try { await openChat(id); return { ok: true }; } catch (e) { sendStatus(e.message); return { ok: false }; } });
-  ipcMain.handle('chat:clear', async event => {if(!trusted(event))return;currentChannel=null;chatPopout.close('primary');chat.setVisible(false);await chat.webContents.loadURL('about:blank');return {ok:true};});
+  ipcMain.handle('chat:clear', async event => {if(!trusted(event))return;currentChannel=null;chatPopout.close('primary');if(chat){chat.setVisible(false);await chat.webContents.loadURL('about:blank');}return {ok:true};});
   ipcMain.on('chat:bounds', (event, bounds) => {
     if (!trusted(event) || !bounds || !['x', 'y', 'width', 'height'].every(k => Number.isFinite(bounds[k]))) return;
     chatBounds = { ...bounds, visible: bounds.visible === true }; layoutChat();
@@ -251,7 +270,7 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle('caption:start', (event, model, device, language) => {
     if (!trusted(event)) return;
-    try { captions.start(model,device,language); return { state: captionState() }; } catch(error) { return { error: error.message, state: captionState() }; }
+    try { if(liteMode)throw Error('Lite 모드에서는 자막을 사용할 수 없습니다.');captions.start(model,device,language); return { state: captionState() }; } catch(error) { return { error: error.message, state: captionState() }; }
   });
   ipcMain.handle('caption:stop', event => { if (!trusted(event)) return; captions.stop(); return captionState(); });
   ipcMain.on('caption:audio', (event, data) => { if (trusted(event)) captions.audio(data); });
@@ -259,6 +278,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('caption:vod', async (event, config = {}) => {
     if (!trusted(event)) return;
     try {
+      if(liteMode)return {cancelled:true};
       const source = server.vodAudioSource(config.url,config.videoId);
       if (!source || !captions.ready || config.epoch !== captions.epoch) throw new Error('재생 중인 다시보기와 자막 상태를 확인해 주세요.');
       const pcm = await vodCaptions.decode(origin+source.path,config.start,config.duration,source.hls);
@@ -270,6 +290,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('caption:live', async (event, config = {}) => {
     if (!trusted(event)) return;
     try {
+      if(liteMode)return {cancelled:true};
       const source=server.liveAudioSource(config.url);
       if(!source||!captions.ready||config.epoch!==captions.epoch)throw Error('라이브 자막 상태를 확인해 주세요.');
       const pcm=await vodCaptions.decode(origin+source,config.start,config.duration,{sn:config.sn,time:config.time});
@@ -281,6 +302,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('vod:download', async (event, action, config = {}) => {
     if (!trusted(event)) return;
     try {
+      if(liteMode&&action==='start')throw Error('Lite 모드에서는 다운로드를 사용할 수 없습니다.');
       if (action === 'start') {
         const source = server.vodSource(config.url, config.videoId);
         if (!source) throw new Error('재생 중인 다시보기의 화질 주소를 먼저 불러와 주세요.');
@@ -293,7 +315,9 @@ app.whenReady().then(async () => {
   });
   ipcMain.on('capture:playhead', (event, epoch) => { if (trusted(event)) recorder.markPlayhead(epoch); });
   ipcMain.handle('capture:command', async (event, action, config = {}) => {
-    if (!trusted(event) || captureCommandBusy) return { error: '다른 녹화 작업을 처리 중입니다.' };
+    if(!trusted(event))return;
+    if(liteMode)return {error:'Lite 모드에서는 녹화·리플레이를 사용할 수 없습니다.'};
+    if (captureCommandBusy) return { error: '다른 녹화 작업을 처리 중입니다.' };
     captureCommandBusy = true;
     try {
       let state;
@@ -330,7 +354,7 @@ app.whenReady().then(async () => {
     return playerOnly;
   });
   ipcMain.handle('player:pip', async (event, config) => {
-    if (!trusted(event)) return false;
+    if (!trusted(event) || liteMode) return false;
     let url; try { url = new URL(config?.url, origin); } catch { return false; }
     if (url.origin !== origin || !/^\/(?:media\/[a-f\d]{32}|dvr\/[a-f\d]{24}\/index\.m3u8)$/.test(url.pathname)) return false;
     if (pipWindow && !pipWindow.isDestroyed()) { pipWindow.focus(); return true; }
@@ -406,15 +430,15 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle('chat:following', async event => {
     if (!trusted(event)) return null;
-    if (loggedIn !== true || accountBusy) return { items: [] };
+    if (liteMode || loggedIn !== true || accountBusy) return { items: [] };
     try {
       const items = await readFollowingLives(chatSession);
-      if (loggedIn !== true || accountBusy) return { items: [] };
+      if (liteMode || loggedIn !== true || accountBusy) return { items: [] };
       return { items };
     } catch (error) { return { items: [], error: error.message }; }
   });
   ipcMain.handle('chat:logout', async event => {
-    if (!trusted(event) || accountBusy) return null;
+    if (!trusted(event) || liteMode || accountBusy) return null;
     accountBusy = true; accountRevision++; publishAccount();
     try {
       for (const popup of popups) if (!popup.isDestroyed()) popup.close();
@@ -426,7 +450,7 @@ app.whenReady().then(async () => {
     return publishAccount();
   });
   ipcMain.on('chat:login', event => {
-    if (!trusted(event)) return;
+    if (!trusted(event) || liteMode) return;
     const popup = new BrowserWindow({ icon: appIcon, width: 600, height: 850, parent: win, autoHideMenuBar: true, title: '네이버 로그인', webPreferences: { session: chatSession, contextIsolation: true, nodeIntegration: false, sandbox: true } });
     popups.add(popup); guard(popup.webContents, { popup, expectedLogin: true });
     popup.on('closed', () => { popups.delete(popup); restoreChannelChat(); scheduleAccountCheck(); });
@@ -434,7 +458,7 @@ app.whenReady().then(async () => {
     popup.loadURL(`https://nid.naver.com/nidlogin.login?url=${encodeURIComponent(destination)}`).catch(error => sendStatus(error.message));
   });
   ipcMain.handle('chat:popout', (event,action='detach') => {
-    if (!trusted(event) || !currentChannel) return {ok:false};
+    if (!trusted(event) || liteMode || !currentChannel || !chat) return {ok:false};
     try{if(action==='attach')chatPopout.close('primary');else chatPopout.open('primary',chat);return {ok:true,detached:chatPopout.has('primary')};}catch(error){return {ok:false,error:error.message};}
   });
   win.on('resize', layoutChat);

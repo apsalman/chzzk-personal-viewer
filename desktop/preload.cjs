@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('desktopChat', {
   viewingState: () => ipcRenderer.invoke('settings:viewing-state'),
   saveViewingState: state => ipcRenderer.sendSync('settings:save-viewing-state', state),
   saveAddress: address => ipcRenderer.send('settings:save-address', address),
+  lite: enabled => ipcRenderer.invoke('player:lite', enabled),
   playerMode: enabled => ipcRenderer.invoke('player:mode', enabled),
   pip: config => ipcRenderer.invoke('player:pip', config),
   closePiP: () => ipcRenderer.send('player:pip-close'),

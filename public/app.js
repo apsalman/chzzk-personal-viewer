@@ -567,11 +567,12 @@ $('address').addEventListener('input', () => { startupAddressEdited = true; }, {
     let saved;
     if (window.desktopChat?.viewingState) saved = await window.desktopChat.viewingState();
     else { try { saved = JSON.parse(localStorage.getItem('chzzk-viewing-state')); } catch {} }
-    const address = saved?.address || (window.desktopChat ? await window.desktopChat.lastAddress() : $('address').value);
+    let liteReturn;try{liteReturn=JSON.parse(sessionStorage.getItem('lite-return'));sessionStorage.removeItem('lite-return');}catch{}
+    const address = liteReturn?.address || saved?.address || (window.desktopChat ? await window.desktopChat.lastAddress() : $('address').value);
     if (startupAddressEdited || generation !== startupGeneration || lastRequest) return;
     if (address) $('address').value = address;
-    if (!/^https:\/\/chzzk\.naver\.com\/(?:video\/\d+|live\/[a-f\d]{32})(?:\/chat)?\/?$/i.test(address || '')) return;
+    if (!liteReturn && !/^https:\/\/chzzk\.naver\.com\/(?:video\/\d+|live\/[a-f\d]{32})(?:\/chat)?\/?$/i.test(address || '')) return;
     status('마지막 시청 정보를 확인하는 중…');
-    await openStream(address, false, saved?.kind === 'vod' ? saved : null);
+    await openStream(address,false,liteReturn?{position:liteReturn.position}:saved?.kind==='vod'?saved:null,liteReturn?{data:liteReturn.data,playback:{paused:liteReturn.paused,muted:liteReturn.muted,volume:liteReturn.volume,rate:liteReturn.rate}}:null);
   } catch { status('마지막 시청 정보를 복원하지 못했습니다. 방송 주소를 입력해 주세요.', true); }
 })();
