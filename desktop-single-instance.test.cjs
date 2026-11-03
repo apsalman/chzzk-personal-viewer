@@ -12,7 +12,7 @@ function loadMain(ownsLock) {
   const app = new EventEmitter();
   let quits = 0, readyCalls = 0;
   Object.assign(app, {
-    isPackaged: false, setPath() {}, setName() {},
+    isPackaged: false, setPath() {}, setName(value) {this.name=value;}, setAppUserModelId(value) {this.modelId=value;},
     requestSingleInstanceLock: () => ownsLock,
     quit: () => quits++,
     whenReady: () => { readyCalls++; return new Promise(() => {}); }
@@ -29,6 +29,12 @@ test('duplicate process exits before registering startup or creating a local ser
   assert.equal(instance.readyCalls, 0);
   assert.equal(instance.control, undefined);
   assert.equal(instance.app.listenerCount('second-instance'), 0);
+});
+
+test('application identity uses Azzzt for the app name and Windows taskbar grouping',()=>{
+  const instance=loadMain(false);
+  assert.equal(instance.app.name,'Azzzt 아자자잣');
+  if(process.platform==='win32')assert.equal(instance.app.modelId,'Azzzt.Viewer');
 });
 test('second launch restores and activates the existing window without restarting it', () => {
   const instance = loadMain(true), calls = [];

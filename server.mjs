@@ -279,5 +279,5 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const port = Number(process.env.CHZZK_PORT || 3131);
   const server = createApp();
   server.on('error', error => { console.error(error.code === 'EADDRINUSE' ? '3131 포트가 사용 중입니다. 이미 실행 중인 창을 확인해 주세요.' : error.message); process.exitCode = 1; });
-  server.listen(port, '127.0.0.1', () => console.log(`치지직 WebUI: http://127.0.0.1:${port}\n종료하려면 이 창에서 Ctrl+C를 누르세요.`));
+  server.listen(port, '127.0.0.1', () => console.log(`Azzzt WebUI: http://127.0.0.1:${port}\n종료하려면 이 창에서 Ctrl+C를 누르세요.`));
 }

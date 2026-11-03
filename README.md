@@ -1,4 +1,4 @@
-# AZZZT LOCAL VIEWER
+# Azzzt 아자자잣
 
 치지직 라이브·다시보기 영상과 채팅을 함께 보는 Windows 앱 아자자잣입니다.
 
@@ -56,7 +56,7 @@ NVIDIA GPU 가속은 `./setup-captions.ps1 -EnableGpu`로 추가 설치합니다
 
 | 방식 | 실행 방법 | 필요 환경 |
 |---|---|---|
-| 독립 앱 | `start-app.cmd` 또는 `dist/ChzzkViewer/ChzzkViewer.exe` | 아래 빌드 또는 빌드된 앱 폴더 |
+| 독립 앱 | `start-app.cmd` 또는 `dist/Azzzt/Azzzt.exe` | 아래 빌드 또는 빌드된 앱 폴더 |
 | WebUI | `start-webui.cmd` → `http://127.0.0.1:3131` | Node.js 22 이상 |
 | 채팅 전용 | `start-chat.cmd` | Chrome 또는 Edge |
 
@@ -78,7 +78,7 @@ NVIDIA GPU 가속은 `./setup-captions.ps1 -EnableGpu`로 추가 설치합니다
 node --test            # 테스트 (Node.js 22 이상)
 ```
 
-빌드 결과는 `dist/ChzzkViewer/`, 배포 파일은 `ChzzkViewer-Windows-x64.zip`입니다. 다른 PC로 옮길 때는 앱 폴더 전체를 복사하세요.
+기존 `dist/ChzzkViewer/`는 빌드 시 `dist/Azzzt/`로 이동하여 프로필을 유지합니다. 빌드 결과는 `dist/Azzzt/`, 배포 파일은 `Azzzt-Windows-x64.zip`입니다. 다른 PC로 옮길 때는 앱 폴더 전체를 복사하세요.
 
 ## 저장 위치·참고
 

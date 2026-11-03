@@ -2,12 +2,12 @@ $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$runtimeRoot = Join-Path $PSScriptRoot 'dist\ChzzkViewer'
-$zipPath = Join-Path $PSScriptRoot 'ChzzkViewer-Windows-x64.zip'
+$runtimeRoot = Join-Path $PSScriptRoot 'dist\Azzzt'
+$zipPath = Join-Path $PSScriptRoot 'Azzzt-Windows-x64.zip'
 if (Test-Path -LiteralPath $zipPath) { throw "ZIP already exists: $zipPath" }
 # Include runtime files and application source explicitly. Never walk the profile.
 $runtimeFiles = @(
-    'ChzzkViewer.exe', 'setup-captions.ps1', 'chrome_100_percent.pak', 'chrome_200_percent.pak',
+    'Azzzt.exe', 'setup-captions.ps1', 'chrome_100_percent.pak', 'chrome_200_percent.pak',
     'd3dcompiler_47.dll', 'dxcompiler.dll', 'electron_wer.dll', 'ffmpeg.dll',
     'icudtl.dat', 'LICENSE', 'LICENSES.chromium.html', 'resources.pak',
     'snapshot_blob.bin', 'v8_context_snapshot.bin', 'version',
@@ -21,13 +21,13 @@ $appFiles = @(
 )
 $files = @()
 foreach ($relative in $runtimeFiles) {
-    $files += [pscustomobject]@{ Source = Join-Path $runtimeRoot $relative; Entry = 'ChzzkViewer/' + $relative }
+    $files += [pscustomobject]@{ Source = Join-Path $runtimeRoot $relative; Entry = 'Azzzt/' + $relative }
 }
 foreach ($file in Get-ChildItem -LiteralPath (Join-Path $runtimeRoot 'locales') -File -Filter '*.pak') {
-    $files += [pscustomobject]@{ Source = $file.FullName; Entry = 'ChzzkViewer/locales/' + $file.Name }
+    $files += [pscustomobject]@{ Source = $file.FullName; Entry = 'Azzzt/locales/' + $file.Name }
 }
 foreach ($relative in $appFiles) {
-    $files += [pscustomobject]@{ Source = Join-Path $runtimeRoot "resources\app\$relative"; Entry = 'ChzzkViewer/resources/app/' + $relative.Replace('\', '/') }
+    $files += [pscustomobject]@{ Source = Join-Path $runtimeRoot "resources\app\$relative"; Entry = 'Azzzt/resources/app/' + $relative.Replace('\', '/') }
 }
 foreach ($file in $files) { if (-not (Test-Path -LiteralPath $file.Source -PathType Leaf)) { throw "Missing required file: $($file.Source)" } }
 $archive = [IO.Compression.ZipFile]::Open($zipPath, [IO.Compression.ZipArchiveMode]::Create)
@@ -35,14 +35,14 @@ try {
     foreach ($file in $files) {
         [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $file.Source, $file.Entry, [IO.Compression.CompressionLevel]::Optimal) | Out-Null
     }
-    $entry = $archive.CreateEntry('ChzzkViewer/README.txt')
+    $entry = $archive.CreateEntry('Azzzt/README.txt')
     $writer = [IO.StreamWriter]::new($entry.Open(), [Text.UTF8Encoding]::new($false))
     try {
         $writer.Write(@'
-AZZZT LOCAL VIEWER · Windows x64
+Azzzt 아자자잣 · Windows x64
 
 1. ZIP 전체를 쓰기 가능한 폴더에 압축 해제하세요.
-2. ChzzkViewer.exe를 실행하세요. EXE와 리소스 파일을 함께 유지하세요.
+2. Azzzt.exe를 실행하세요. EXE와 리소스 파일을 함께 유지하세요.
 3. 방송 주소를 입력하거나, 네이버 로그인 후 팔로우 라이브를 선택하세요.
 
 처음 실행하면 주소창은 비어 있습니다. 로그인 및 마지막 방송 주소 등 사용 데이터는
@@ -75,6 +75,6 @@ try {
     $forbidden = $entries | Where-Object { $_ -match '(?i)(^|/)(profile|Recordings|Downloads|\.buffer|\.desktop-profile|\.build-cache)(/|$)|last-address\.json|viewing-state\.json|login-diagnostics|\.log$|preview\.png$|Cookies|Local Storage|Login Data' }
     if ($forbidden) { throw "Unexpected personal data paths in archive: $($forbidden -join ', ')" }
     if ($entries.Count -ne $files.Count + 1) { throw 'Archive entry count mismatch' }
-    if ($entries -notcontains 'ChzzkViewer/ChzzkViewer.exe' -or $entries -notcontains 'ChzzkViewer/resources/app/desktop/main.cjs') { throw 'Archive missing app entry points' }
+    if ($entries -notcontains 'Azzzt/Azzzt.exe' -or $entries -notcontains 'Azzzt/resources/app/desktop/main.cjs') { throw 'Archive missing app entry points' }
     [pscustomobject]@{ Zip = $zipPath; Files = $entries.Count; SizeMB = [Math]::Round((Get-Item -LiteralPath $zipPath).Length / 1MB, 1); PersonalDataPaths = 0 } | ConvertTo-Json
 } finally { $check.Dispose() }

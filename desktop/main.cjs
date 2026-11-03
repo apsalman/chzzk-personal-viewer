@@ -24,7 +24,8 @@ app.setPath('userData', profile);
 const windowSettingsFile = path.join(profile,'window-state.json');
 const windowSettings = readWindowSettings(windowSettingsFile);
 let mainSaveTimer, pipSaveTimer;
-app.setName('AZZZT LOCAL VIEWER');
+app.setName('Azzzt 아자자잣');
+if(process.platform==='win32')app.setAppUserModelId('Azzzt.Viewer');
 if (!app.requestSingleInstanceLock()) {
   app.quit();
   return;
@@ -97,6 +98,7 @@ function restoreChannelChat(contents = chat?.webContents, channel = currentChann
   else contents.loadURL(target).catch(error => sendStatus(error.message));
 }
 function guard(contents, { chatWindow = false, popup = null, expectedLogin = false, channel = null } = {}) {
+  if(popup)popup.on('page-title-updated',(event,title)=>{event.preventDefault();popup.setTitle('Azzzt · '+title);});
   watchLoginReturn(contents, () => {
     scheduleAccountCheck();
     if (chatWindow) {
@@ -212,11 +214,11 @@ app.whenReady().then(async () => {
   win = new BrowserWindow({
     icon: appIcon,
     ...initialMain, minWidth: Math.min(1000,initialMain.width), minHeight: Math.min(650,initialMain.height),
-    title: '아자자잣 · Chzzk Local Viewer', backgroundColor: '#101214', show: false,
+    title: 'Azzzt · 아자자잣', backgroundColor: '#101214', show: false,
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, autoplayPolicy: 'no-user-gesture-required' }
   });
   ensurePrimaryChat();
-  chatPopout=new ChatPopout({window:win,createWindow:()=>new BrowserWindow({icon:appIcon,width:440,height:820,parent:win,show:false,autoHideMenuBar:true,title:'채팅 · AZZZT',webPreferences:{session:chatSession,contextIsolation:true,nodeIntegration:false,sandbox:true}}),onState:(id,detached,disposed)=>{
+  chatPopout=new ChatPopout({window:win,createWindow:()=>new BrowserWindow({icon:appIcon,width:440,height:820,parent:win,show:false,autoHideMenuBar:true,title:'Azzzt · 아자자잣 · 채팅',webPreferences:{session:chatSession,contextIsolation:true,nodeIntegration:false,sandbox:true}}),onState:(id,detached,disposed)=>{
     if(win&&!win.isDestroyed())win.webContents.send('chat:popout-state',{id,detached,disposed});
     if(!detached&&!disposed){if(id==='primary')layoutChat();else multiChat?.layout(id);}
   }});
@@ -362,7 +364,7 @@ app.whenReady().then(async () => {
     pipWindow = new BrowserWindow({ ...initialPiP, minWidth: 240, minHeight: 135,
       icon: appIcon,
       frame: false, thickFrame: false, hasShadow: false, roundedCorners: false,
-      title: '아자자잣 · Chzzk Local Viewer · PiP', alwaysOnTop: true, autoHideMenuBar: true, backgroundColor: '#000000',
+      title: 'Azzzt · 아자자잣 · PiP', alwaysOnTop: true, autoHideMenuBar: true, backgroundColor: '#000000',
       webPreferences: { preload: path.join(__dirname, 'pip-preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false, autoplayPolicy: 'no-user-gesture-required' }
     });
     const current = pipWindow;
@@ -451,7 +453,7 @@ app.whenReady().then(async () => {
   });
   ipcMain.on('chat:login', event => {
     if (!trusted(event) || liteMode) return;
-    const popup = new BrowserWindow({ icon: appIcon, width: 600, height: 850, parent: win, autoHideMenuBar: true, title: '네이버 로그인', webPreferences: { session: chatSession, contextIsolation: true, nodeIntegration: false, sandbox: true } });
+    const popup = new BrowserWindow({ icon: appIcon, width: 600, height: 850, parent: win, autoHideMenuBar: true, title: 'Azzzt · 네이버 로그인', webPreferences: { session: chatSession, contextIsolation: true, nodeIntegration: false, sandbox: true } });
     popups.add(popup); guard(popup.webContents, { popup, expectedLogin: true });
     popup.on('closed', () => { popups.delete(popup); restoreChannelChat(); scheduleAccountCheck(); });
     const destination = currentChannel ? `https://chzzk.naver.com/live/${currentChannel}/chat` : 'https://chzzk.naver.com/';
