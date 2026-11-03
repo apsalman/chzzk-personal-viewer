@@ -37,3 +37,15 @@ test('nested docking keeps every player once, inside the workspace without overl
  assert.deepEqual(dock(tree,'a','missing','left'),tree);
  assert.deepEqual(dock(tree,'a','a','left'),tree);
 });
+
+test('closing the main player promotes a remaining player in its own position and preserves the directory split',()=>{
+ const tree={axis:'x',ratio:.65,a:{axis:'y',ratio:.4,a:'primary',b:{axis:'x',ratio:.7,a:'second',b:'third'}},b:'directory'};
+ const promoted=sandbox.module.exports.replace(remove(tree,'primary'),'second','primary');
+ const r=rectangles(promoted,1600,800);
+ assert.deepEqual(Object.keys(r).sort(),['directory','primary','third']);
+ assert.equal(promoted.ratio,.65);assert.equal(promoted.a.ratio,.7);
+ assert.ok(r.primary.x<r.third.x&&r.third.x<r.directory.x);
+ const last=sandbox.module.exports.replace(remove(promoted,'primary'),'third','primary');
+ assert.deepEqual(Object.keys(rectangles(last,1600,800)).sort(),['directory','primary']);
+ assert.equal(remove(last,'primary'),'directory');
+});

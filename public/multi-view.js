@@ -2,7 +2,7 @@
   const layout=document.getElementById('layout'),watch=document.querySelector('.watch'),chat=document.getElementById('chat');
   const api=window.desktopChat,geometry=window.MultiLayout,tiles=new Map();
   let board,toolbar,primary,settings,watchAnchor,chatAnchor,statusObserver,boardObserver,manualTree=null,serial=0,drag=null,resizeDrag=null,frame=0,selected='primary';
-  const splitHandles=new Map();
+  const splitHandles=new Map();let closingPrimary=false;
   const addButton=document.createElement('button');addButton.type='button';addButton.id='add-stream';addButton.textContent='영상 추가 +';addButton.title='주소란의 영상을 현재 영상 옆에 추가합니다';document.getElementById('open').after(addButton);
   function button(text,action,title=text){const node=document.createElement('button');node.type='button';node.textContent=text;node.title=title;node.onclick=action;return node;}
   function ids(){return [...tiles.keys()];}
@@ -95,7 +95,7 @@
     const syncQuality=()=>{quality.replaceChildren(...[...sourceQuality.options].map(option=>new Option(option.textContent,option.value,false,option.selected)));quality.disabled=sourceQuality.disabled;};syncQuality();
     const qualityObserver=new MutationObserver(syncQuality);qualityObserver.observe(sourceQuality,{childList:true,subtree:true,attributes:true});sourceQuality.addEventListener('change',syncQuality);
     quality.onchange=()=>{sourceQuality.value=quality.value;sourceQuality.dispatchEvent(new Event('change',{bubbles:true}));};
-    head.append(handle,quality,primaryChat,primaryPopout,settingsButton);
+    head.append(handle,quality,primaryChat,primaryPopout,settingsButton,button('×',()=>closeTile('primary'),'메인 영상 닫기'));
     const body=document.createElement('div');body.className='multi-body';const primaryDivider=chatDivider('primary');body.append(watch,primaryDivider,chat);primary.append(head,body);board.append(primary);
     settings=document.createElement('div');settings.className='multi-primary-settings';
     for(const child of [...watch.children])if(!child.classList.contains('screen'))settings.append(child);
@@ -144,13 +144,34 @@
   }
   function closeTile(id){
     if(id==='directory'){closeDirectory();return;}
-    const tile=tiles.get(id);if(!tile||tile.primary)return;
+    if(id==='primary'){closePrimary();return;}
+    const tile=tiles.get(id);if(!tile||closingPrimary)return;
     tile.closed=true;tile.hls?.destroy();tile.video.pause();tile.video.removeAttribute('src');tile.video.load();tile.vodChat?.destroy();tile.element.remove();tiles.delete(id);api?.multiChat?.('close',id).catch(()=>{});
     tile.stopInfo?.();
     clearInterval(tile.popupTimer);if(tile.browserPopup&&!tile.browserPopup.closed)tile.browserPopup.close();
     if(selected===id){selected='primary';primary.classList.add('selected');}
     if(manualTree)manualTree=geometry.remove(manualTree,id);
     if(tiles.size===1)leave();else schedule();
+  }
+  async function closePrimary(){
+    if(closingPrimary||!board)return;
+    if(window.captureController?.state.active){status('녹화 또는 리플레이 버퍼를 종료한 뒤 영상을 닫아 주세요.',true);return;}
+    closingPrimary=true;
+    try{
+      const next=[...tiles.values()].find(tile=>!tile.primary&&!tile.directory);
+      if(!next){closeDirectory();await closePrimaryStream();window.viewerHome.show();return;}
+      const tree=geometry.replace(geometry.remove(currentTree(),'primary'),next.id,'primary');
+      const playback={paused:next.video.paused,muted:next.video.muted,volume:next.video.volume,rate:next.video.playbackRate};
+      const position=next.video.currentTime,keepDirectory=tiles.has('directory'),fraction=next.chatFraction??.3,chatVisible=next.chatVisible;
+      await clearPrimaryChat();
+      const opened=await openStream(next.address,false,{position},{data:next.data,playback,keepDirectory});
+      if(!opened)return;
+      document.getElementById('address').value=next.address;
+      layout.classList.toggle('no-chat',!chatVisible);document.getElementById('toggle').textContent=chatVisible?'채팅 ON':'채팅 OFF';document.getElementById('toggle').setAttribute('aria-pressed',String(chatVisible));
+      tiles.get('primary').chatFraction=fraction;
+      closingPrimary=false;closeTile(next.id);
+      if(board){manualTree=tree;selected='primary';for(const tile of tiles.values())tile.element.classList.toggle('selected',tile.primary);schedule();}
+    }catch(error){status(error.message,true);}finally{closingPrimary=false;}
   }
   function play(tile,data){
     tile.hls?.destroy();tile.vodChat?.destroy();tile.slot.replaceChildren();tile.data=data;tile.channel=data.kind==='vod'?null:data.channelId;

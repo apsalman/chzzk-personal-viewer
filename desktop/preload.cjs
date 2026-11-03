@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('desktopChat', {
   open: id => ipcRenderer.invoke('chat:open', id),
+  clear: () => ipcRenderer.invoke('chat:clear'),
   multiChat: (action,id,channel) => ipcRenderer.invoke('multi:chat',action,id,channel),
   multiBounds: (id,bounds) => ipcRenderer.send('multi:bounds',id,bounds),
   bounds: bounds => ipcRenderer.send('chat:bounds', bounds),

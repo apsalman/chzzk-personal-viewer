@@ -195,7 +195,7 @@ async function playSource(url, run, preserveLevels = false, height = null) {
     video.addEventListener('loadedmetadata', () => { if (run !== generation) return; if (resumeTime !== null) video.currentTime = Math.min(resumeTime, Math.max(0, video.duration - .5)); pendingVodResume = null; changingSource = false; persistViewingState(true); }, { once: true });
   } else { $('empty').hidden = false; status('HLS 재생기를 불러오지 못했습니다. 서버를 다시 시작해 주세요.', true); }
 }
-async function openStream(value = $('address').value.trim(), manual = false, restore = null) {
+async function openStream(value = $('address').value.trim(), manual = false, restore = null, prepared = null) {
   if (window.captureController?.state.active) { status('녹화 또는 리플레이 버퍼를 종료한 뒤 방송을 변경해 주세요.', true); return; }
   persistViewingState(true);
   const run = ++generation;
@@ -203,10 +203,16 @@ async function openStream(value = $('address').value.trim(), manual = false, res
   hls?.destroy(); hls = null; video.pause(); video.removeAttribute('src'); video.load(); $('empty').hidden = false;
   $('open').disabled = true; status('방송 정보를 확인하고 재생 주소를 가져오는 중…');
   try {
-    const response = await fetch('/api/resolve?url=' + encodeURIComponent(value));
-    const data = await response.json();
+    const response = prepared?.data ? null : await fetch('/api/resolve?url=' + encodeURIComponent(value));
+    const data = prepared?.data || await response.json();
     if (run !== generation) return;
-    if (!response.ok) throw new Error(data.error);
+    if (response && !response.ok) throw new Error(data.error);
+    if(prepared?.playback){
+      const state=prepared.playback;video.muted=state.muted;video.volume=state.volume;
+      if(data.kind==='vod')preferredVodSpeed=state.rate;
+      const restorePlayback=()=>{if(run!==generation)return;if(state.paused)video.pause();};
+      video.addEventListener('loadeddata',restorePlayback,{once:true});
+    }
     if (!manual) setVodMode(data);
     if (!manual) {
       viewingState = data.kind === 'vod' ? { kind: 'vod', address: `https://chzzk.naver.com/video/${data.videoId}`, position: Math.max(0, Number(restore?.position) || 0) } : data.channelId ? { kind: 'live', address: `https://chzzk.naver.com/live/${data.channelId}`, position: 0 } : null;
@@ -227,9 +233,25 @@ async function openStream(value = $('address').value.trim(), manual = false, res
     $('source').replaceChildren(...data.sources.map((s, i) => new Option(s.name, String(i))));
     $('source').hidden = data.sources.length < 2;
     await playSource(data.sources[0].url, run);
-    if(run===generation)window.dispatchEvent(new Event('viewer-stream-opened'));
+    if(run===generation){window.dispatchEvent(new CustomEvent('viewer-stream-opened',{detail:{keepDirectory:!!prepared?.keepDirectory}}));return true;}
   } catch (error) { if (run === generation) status(error.message, true); }
   finally { if (run === generation) $('open').disabled = false; }
+}
+async function clearPrimaryChat(){
+  primaryChatPopup?.close();primaryChatPopup=null;updatePrimaryChatDetached(false);activeChannel=null;
+  await window.desktopChat?.clear?.();
+}
+async function closePrimaryStream(){
+  persistViewingState(true);generation++;startupAddressEdited=true;sourceRevision++;
+  if(desktopPiP)window.desktopChat.closePiP();
+  resolved=null;lastRequest=null;viewingState=null;pendingVodResume=null;playingFragment=null;changingSource=false;
+  hls?.destroy();hls=null;video.pause();video.removeAttribute('src');video.load();
+  setVodMode(null);await clearPrimaryChat();
+  localStorage.removeItem('chzzk-viewing-state');localStorage.removeItem('chzzk-channel');
+  window.desktopChat?.saveViewingState?.(null);window.desktopChat?.saveAddress('');
+  $('address').value='';$('title').textContent='시청할 방송을 열어 주세요';$('channel').textContent='영상은 로컬 플레이어로, 채팅은 공식 채팅으로';
+  $('empty').hidden=false;$('open').disabled=false;status('방송을 종료했습니다.');
+  window.dispatchEvent(new Event('viewer-stream-closed'));
 }
 $('open-form').addEventListener('submit', e => { e.preventDefault(); openStream(); });
 $('reconnect').onclick = () => lastRequest ? openStream(lastRequest.value, lastRequest.manual) : openStream();

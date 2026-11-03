@@ -224,6 +224,7 @@ app.whenReady().then(async () => {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (event, url) => { if (new URL(url).origin !== origin) event.preventDefault(); });
   ipcMain.handle('chat:open', async (event, id) => { if (!trusted(event)) return; try { await openChat(id); return { ok: true }; } catch (e) { sendStatus(e.message); return { ok: false }; } });
+  ipcMain.handle('chat:clear', async event => {if(!trusted(event))return;currentChannel=null;chatPopout.close('primary');chat.setVisible(false);await chat.webContents.loadURL('about:blank');return {ok:true};});
   ipcMain.on('chat:bounds', (event, bounds) => {
     if (!trusted(event) || !bounds || !['x', 'y', 'width', 'height'].every(k => Number.isFinite(bounds[k]))) return;
     chatBounds = { ...bounds, visible: bounds.visible === true }; layoutChat();

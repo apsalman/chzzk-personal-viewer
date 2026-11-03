@@ -43,7 +43,7 @@
   document.querySelector('.brand').addEventListener('click',event=>{if(event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;event.preventDefault();show(true);});
   window.addEventListener('directory-dock-closed',()=>{configureObserver();el('home-back').textContent='시청 화면으로';scheduleObserve();});
   el('home-back').onclick=()=>hide();
-  window.addEventListener('viewer-stream-opened',()=>hide());
+  window.addEventListener('viewer-stream-opened',event=>{if(!event.detail?.keepDirectory)hide();});
   function save(){
     settings=rules.normalize(settings);const value=JSON.stringify(settings),run=++saveRevision;
     clearTimeout(saveTimer);saveTimer=setTimeout(async()=>{

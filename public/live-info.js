@@ -29,6 +29,6 @@
   setInterval(()=>{for(const [id,record] of channels){paint(record);if(!document.hidden&&Date.now()-record.fetched>=30000)refresh(id);}},1000);
   const main=document.createElement('span');main.id='primary-live-info';main.className='live-info';document.getElementById('title').after(main);let stop=()=>{};
   function update(){stop();stop=watch(main,resolved?.kind==='vod'?null:resolved?.channelId,resolved?.liveInfo);}
-  window.addEventListener('viewer-stream-opened',update);if(resolved)update();
+  window.addEventListener('viewer-stream-closed',update);window.addEventListener('viewer-stream-opened',update);if(resolved)update();
   root.LiveInfo={watch,refresh,format};
 })(globalThis);
