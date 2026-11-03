@@ -243,6 +243,7 @@ export function createApp({ recorder } = {}) {
       files['/live-info.js'] = ['live-info.js', 'text/javascript'];
       files['/caption-timeline.js'] = ['caption-timeline.js', 'text/javascript'];
       files['/caption-worklet.js'] = ['caption-worklet.js', 'text/javascript'];
+      files['/assets/wordmark.svg'] = ['assets/wordmark.svg', 'image/svg+xml'];
       files['/assets/logo.png'] = ['assets/logo.png', 'image/png'];
       files['/assets/app.ico'] = ['assets/app.ico', 'image/x-icon'];
       const file = files[u.pathname];

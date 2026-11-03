@@ -91,3 +91,5 @@ node --test            # 테스트 (Node.js 22 이상)
 로그인 필요 방송의 영상 추출은 지원하지 않습니다. 과거 채팅은 읽기 전용이며, 스트림 만료 시 **다시 연결**을 누르세요. 치지직 API 변경에 따라 수정이 필요할 수 있습니다.
 
 방송 정보 조회는 [yt-dlp의 CHZZK 구현](https://github.com/yt-dlp/yt-dlp/blob/master/yt_dlp/extractor/chzzk.py)을 참고했습니다. HLS.js 라이선스는 `public/vendor/hls.LICENSE`에 있습니다.
+
+상단 글자 로고: [아시아폰트 파이터](https://www.asiafont.com/asfont/m_view.php?ps_db=sample&ps_boid=318).
