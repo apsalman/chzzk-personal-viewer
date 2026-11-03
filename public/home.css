@@ -1,4 +1,4 @@
-body.home-mode #layout,body.home-mode footer{display:none!important}body:not(.home-mode) #home-screen{display:none}
+body.home-mode #layout,body.home-mode footer{display:none!important}body:not(.home-mode):not(.directory-docked) #home-screen{display:none}
 #home-screen{max-width:1900px;margin:auto;padding:28px 32px 40px}.home-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}.home-heading h1{font-size:26px;margin:0 0 8px}.home-heading p{font-size:13px;color:#91a69d;margin:0}
 .home-controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:24px 0 16px}.home-controls input{max-width:520px}.home-controls label{display:flex;gap:8px;align-items:center;font-size:13px}
 #home-status{color:#9bb2a7;font-size:12px;min-height:20px;margin:22px 0 16px}
@@ -10,3 +10,5 @@ body.home-mode #layout,body.home-mode footer{display:none!important}body:not(.ho
 #home-load-marker{height:1px}
 .home-card-opened{display:block;color:#738d7d;font-size:10px;margin-top:3px}
 @media(max-width:740px){#home-screen{padding:20px 16px}#home-grid{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}.home-controls input{flex-basis:100%;max-width:none}.home-heading h1{font-size:22px}.home-heading p{display:none}}
+
+.multi-directory-body{flex:1;min-height:0;overflow:hidden}body.directory-docked #home-screen{display:block;width:100%;height:100%;max-width:none;padding:16px;overflow-y:auto;overscroll-behavior:contain;min-width:0;box-sizing:border-box}body.directory-docked .home-heading h1{font-size:22px}body.directory-docked #home-grid{grid-template-columns:repeat(auto-fill,minmax(min(240px,100%),1fr))}

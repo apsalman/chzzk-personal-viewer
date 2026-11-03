@@ -54,3 +54,6 @@ body.multi-view.player-only .multi-body{grid-template-columns:minmax(0,1fr)!impo
 body.multi-view.player-only .multi-chat-divider{display:none}
 @media(max-width:1050px){#multi-board{height:calc(100dvh - 210px)}}
 @media(max-width:740px){#multi-board{height:calc(100dvh - 230px);min-height:560px}body.multi-view #layout{padding:8px}.multi-head{gap:2px}.multi-head button,.multi-head select{padding:4px;font-size:10px}}
+
+.multi-handle-title{display:block;overflow:hidden;text-overflow:ellipsis}.multi-head .live-info{display:block;font-size:10px;font-weight:400;color:#a5c7b6}.info .live-info{font-size:11px;color:#a5c7b6;margin-left:10px}
+.multi-head{flex-wrap:wrap}.multi-head .multi-handle{flex:1 1 240px;min-width:0}.multi-head .live-info{white-space:normal}

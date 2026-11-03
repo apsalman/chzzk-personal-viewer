@@ -49,6 +49,7 @@
     for(const tile of tiles.values()){
       const b=bounds[tile.id];if(!b)continue;
       Object.assign(tile.element.style,{left:b.x+'px',top:b.y+'px',width:b.width+'px',height:b.height+'px'});
+      if(tile.directory)continue;
       const detached=tile.primary?primaryChatDetached:tile.detached;
       const visible=!detached&&(tile.primary?!layout.classList.contains('no-chat'):tile.chatVisible);
       const side=resizeDrag?.kind==='chat'&&resizeDrag.id===tile.id?resizeDrag.side:b.width/Math.max(1,b.height)>1.9?'right':'bottom';
@@ -82,8 +83,10 @@
     board=document.createElement('div');board.id='multi-board';board.setAttribute('aria-label','여러 영상 분할 보기');layout.append(toolbar,board);
     primary=document.createElement('section');primary.className='multi-tile multi-primary selected';primary.dataset.id='primary';selected='primary';
     const head=document.createElement('div');head.className='multi-head';
-    const handle=button('메인 영상',()=>{},'드래그하여 영상 배치');handle.className='multi-handle';
-    const titleObserver=new MutationObserver(()=>{handle.textContent='메인 · '+document.getElementById('title').textContent;});titleObserver.observe(document.getElementById('title'),{childList:true,subtree:true,characterData:true});
+    const handle=button('',()=>{},'드래그하여 영상 배치');handle.className='multi-handle';
+    const titleText=document.createElement('span');titleText.className='multi-handle-title';const stats=document.createElement('span');stats.className='live-info';handle.append(titleText,stats);
+    const updateTitle=()=>{titleText.textContent='메인 · '+document.getElementById('title').textContent;};updateTitle();
+    const titleObserver=new MutationObserver(updateTitle);titleObserver.observe(document.getElementById('title'),{childList:true,subtree:true,characterData:true});
     const primaryChat=button('채팅 ON',()=>{originalToggle();schedule();});
     const settingsButton=button('설정',()=>{settings.classList.toggle('open');settingsButton.setAttribute('aria-expanded',String(settings.classList.contains('open')));});settingsButton.setAttribute('aria-expanded','false');
     const primaryPopout=button('별도 창 ↗',()=>document.getElementById('popout').click());
@@ -97,13 +100,14 @@
     settings=document.createElement('div');settings.className='multi-primary-settings';
     for(const child of [...watch.children])if(!child.classList.contains('screen'))settings.append(child);
     watch.append(settings);
-    tiles.set('primary',{id:'primary',primary:true,element:primary,chatButton:primaryChat,popoutButton:primaryPopout,divider:primaryDivider,observer:titleObserver,qualityObserver,syncQuality});
+    tiles.set('primary',{id:'primary',primary:true,element:primary,stats,chatButton:primaryChat,popoutButton:primaryPopout,divider:primaryDivider,observer:titleObserver,qualityObserver,syncQuality});updatePrimaryInfo();
     board.addEventListener('pointerdown',beginDrag,{capture:true});board.addEventListener('pointermove',moveDrag);for(const name of ['pointerup','pointercancel','lostpointercapture'])board.addEventListener(name,finishDrag);
     boardObserver=new ResizeObserver(schedule);boardObserver.observe(board);schedule();
   }
   function leave(){
     if(!board)return;
     const record=tiles.get('primary');record?.observer.disconnect();
+    record?.stopInfo?.();
     record?.qualityObserver.disconnect();document.getElementById('quality').removeEventListener('change',record.syncQuality);splitHandles.clear();
     statusObserver?.disconnect();
     boardObserver?.disconnect();
@@ -112,7 +116,25 @@
     requestAnimationFrame(reportChatBounds);
   }
   const originalToggle=document.getElementById('toggle').onclick;
-  document.getElementById('toggle').onclick=()=>{if(primaryChatDetached){originalToggle();return;}originalToggle();if(board){const on=!layout.classList.contains('no-chat');for(const tile of tiles.values())if(!tile.primary)tile.chatVisible=on;schedule();}};
+  document.getElementById('toggle').onclick=()=>{if(primaryChatDetached){originalToggle();return;}originalToggle();if(board){const on=!layout.classList.contains('no-chat');for(const tile of tiles.values())if(!tile.primary&&!tile.directory)tile.chatVisible=on;schedule();}};
+  function updatePrimaryInfo(){const tile=tiles.get('primary');if(!tile)return;tile.stopInfo?.();tile.stopInfo=window.LiveInfo.watch(tile.stats,resolved?.kind==='vod'?null:resolved?.channelId,resolved?.liveInfo);}
+  window.addEventListener('viewer-stream-opened',updatePrimaryInfo);
+  function browse(home){
+    if(tiles.has('directory'))return;
+    enter();const previous=currentTree(),anchor=document.createComment('broadcast directory');home.before(anchor);
+    const element=document.createElement('section');element.className='multi-tile multi-directory';element.dataset.id='directory';
+    const head=document.createElement('div');head.className='multi-head';const handle=button('방송 목록',()=>{},'드래그하여 목록 배치');handle.className='multi-handle';head.append(handle,button('×',closeDirectory,'방송 목록 닫기'));
+    const body=document.createElement('div');body.className='multi-directory-body';body.append(home);element.append(head,body);board.append(element);
+    tiles.set('directory',{id:'directory',directory:true,element,anchor,home});manualTree={axis:'x',a:previous,b:'directory'};
+    document.body.classList.add('directory-docked');schedule();
+  }
+  function closeDirectory(){
+    const tile=tiles.get('directory');if(!tile)return;
+    tile.anchor.replaceWith(tile.home);tile.element.remove();tiles.delete('directory');manualTree=geometry.remove(manualTree,'directory');document.body.classList.remove('directory-docked');
+    if(selected==='directory')selected='primary';
+    window.dispatchEvent(new Event('directory-dock-closed'));
+    if(tiles.size===1)leave();else schedule();
+  }
   window.addEventListener('primary-chat-detached',schedule);
   api?.onChatPopout?.(state=>{if(state.id==='primary'||state.disposed)return;const tile=tiles.get(state.id);if(tile){tile.detached=state.detached;if(!state.detached)tile.chatVisible=true;schedule();}});
   async function popout(tile){
@@ -121,8 +143,10 @@
     else if(tile.channel){const popup=window.open(`https://chzzk.naver.com/live/${tile.channel}/chat`,'chat-'+tile.id,'popup,width=420,height=820');if(popup){tile.browserPopup=popup;tile.detached=true;schedule();tile.popupTimer=setInterval(()=>{if(popup.closed){clearInterval(tile.popupTimer);tile.detached=false;schedule();}},1000);}}
   }
   function closeTile(id){
+    if(id==='directory'){closeDirectory();return;}
     const tile=tiles.get(id);if(!tile||tile.primary)return;
     tile.closed=true;tile.hls?.destroy();tile.video.pause();tile.video.removeAttribute('src');tile.video.load();tile.vodChat?.destroy();tile.element.remove();tiles.delete(id);api?.multiChat?.('close',id).catch(()=>{});
+    tile.stopInfo?.();
     clearInterval(tile.popupTimer);if(tile.browserPopup&&!tile.browserPopup.closed)tile.browserPopup.close();
     if(selected===id){selected='primary';primary.classList.add('selected');}
     if(manualTree)manualTree=geometry.remove(manualTree,id);
@@ -131,6 +155,7 @@
   function play(tile,data){
     tile.hls?.destroy();tile.vodChat?.destroy();tile.slot.replaceChildren();tile.data=data;tile.channel=data.kind==='vod'?null:data.channelId;
     tile.note.textContent='영상 연결 중…';tile.note.hidden=false;
+    tile.stopInfo?.();tile.stopInfo=window.LiveInfo.watch(tile.stats,tile.channel,data.liveInfo);
     if(window.Hls?.isSupported()){
       const player=tile.hls=new Hls({lowLatencyMode:false,maxBufferLength:20,backBufferLength:15,liveSyncDurationCount:4});
       player.on(Hls.Events.MANIFEST_PARSED,()=>{
@@ -159,14 +184,16 @@
     if(addButton.disabled)return;
     if(!value){document.getElementById('address').focus();status('추가할 방송 주소를 입력해 주세요.',true);return;}
     if(!resolved?.sources?.length){await openStream(value);return;}
-    if(tiles.size>=9){status('한 창에는 최대 9개 영상을 열 수 있습니다.',true);return;}
+    if([...tiles.values()].filter(tile=>!tile.directory).length>=9){status('한 창에는 최대 9개 영상을 열 수 있습니다.',true);return;}
     addButton.disabled=true;
     try{
       const response=await fetch('/api/resolve?url='+encodeURIComponent(value)),data=await response.json();
       if(!response.ok||!data.sources?.length)throw Error(data.error||'영상을 불러오지 못했습니다.');
       enter();const id='multi-'+(++serial),element=document.createElement('section');element.className='multi-tile';element.dataset.id=id;
       const head=document.createElement('div');head.className='multi-head';
-      const handle=button(data.channel||data.title||'추가 영상',()=>{},data.title||'드래그하여 영상 배치');handle.className='multi-handle';
+      const handle=button('',()=>{},data.title||'드래그하여 영상 배치');handle.className='multi-handle';
+      const titleText=document.createElement('span');titleText.className='multi-handle-title';titleText.textContent=[data.channel,data.title].filter(Boolean).join(' · ')||'추가 영상';
+      const stats=document.createElement('span');stats.className='live-info';handle.append(titleText,stats);
       const media=document.createElement('video');media.controls=true;media.playsInline=true;media.muted=true;media.dataset.multiVideo=id;
       const note=document.createElement('p');note.className='multi-note';note.setAttribute('role','status');
       const screen=document.createElement('div');screen.className='screen';screen.append(media,note);
@@ -175,14 +202,16 @@
       const slot=document.createElement('div');slot.className='multi-chat-slot';
       const side=document.createElement('aside');side.className='multi-chat';const chatHead=document.createElement('div');chatHead.className='chat-head';chatHead.textContent='채팅 · '+(data.channel||data.title||'추가 영상');side.append(chatHead,slot);
       const body=document.createElement('div');body.className='multi-body';const divider=chatDivider(id);body.append(screen,divider,side);
-      const tile={id,address:value,element,video:media,quality,speed,slot,note,divider,chatVisible:true,closed:false,channel:null,hls:null,detached:false};
+      const tile={id,address:value,element,video:media,quality,speed,slot,note,divider,stats,chatVisible:true,closed:false,channel:null,hls:null,detached:false};
       const chatButton=tile.chatButton=button('채팅 ON',()=>{if(tile.detached){popout(tile);return;}tile.chatVisible=!tile.chatVisible;schedule();});
       tile.popoutButton=button('별도 창 ↗',()=>popout(tile));
       const muteButton=button('음소거',()=>{media.muted=!media.muted;});media.addEventListener('volumechange',()=>{muteButton.textContent=media.muted?'음소거':'소리 ON';muteButton.setAttribute('aria-pressed',String(!media.muted));});
       head.append(handle,quality,speed,muteButton,chatButton,tile.popoutButton,button('↻',()=>reconnect(tile),'영상 다시 연결'),button('×',()=>closeTile(id),'추가 영상 닫기'));
       quality.onchange=()=>{if(tile.hls)tile.hls.currentLevel=Number(quality.value);};speed.onchange=()=>{media.playbackRate=Number(speed.value);};
       media.addEventListener('playing',()=>{note.hidden=true;});
-      element.append(head,body);board.append(element);tiles.set(id,tile);if(manualTree)manualTree={axis:board.clientWidth/board.clientHeight>1.3?'x':'y',a:manualTree,b:id};play(tile,data);
+      element.append(head,body);board.append(element);
+      const replacement=tiles.has('directory')?geometry.replace(currentTree(),'directory',id):null;
+      tiles.set(id,tile);if(replacement){manualTree=replacement;closeDirectory();}else if(manualTree)manualTree={axis:board.clientWidth/board.clientHeight>1.3?'x':'y',a:manualTree,b:id};play(tile,data);
     }catch(error){status(error.message,true);}finally{addButton.disabled=false;}
   }
   addButton.onclick=()=>add();
@@ -218,7 +247,7 @@
         const title=document.createElement('div');title.className='multi-preview-title';title.textContent=item.element.querySelector('.multi-handle').textContent;
         const content=document.createElement('div');content.className='multi-preview-body';
         const canvas=document.createElement('canvas');canvas.width=480;canvas.height=270;
-        try{canvas.getContext('2d').drawImage(item.video||video,0,0,480,270);}catch{}
+        try{if(item.directory){const context=canvas.getContext('2d');context.fillStyle='#10231f';context.fillRect(0,0,480,270);context.fillStyle='#a9d5bd';context.font='24px sans-serif';context.fillText('방송 목록',160,140);}else canvas.getContext('2d').drawImage(item.video||video,0,0,480,270);}catch{}
         const placeholder=document.createElement('div');placeholder.className='multi-preview-chat';placeholder.textContent='채팅';content.append(canvas,placeholder);ghost.append(title,content);preview.append(ghost);
       }
       const b=future[item.id],hasChat=item.primary?!primaryChatDetached&&!layout.classList.contains('no-chat'):item.chatVisible&&!item.detached;
@@ -240,8 +269,8 @@
   }
   document.addEventListener('keydown',event=>{if(event.key==='Escape'&&(drag||resizeDrag))finishDrag({pointerId:(drag||resizeDrag).pointer,type:'pointercancel'});});
   window.addEventListener('resize',schedule);window.addEventListener('scroll',()=>{if(board)report();},{passive:true});document.addEventListener('fullscreenchange',schedule);
-  window.addEventListener('beforeunload',()=>{for(const tile of tiles.values())if(!tile.primary){tile.hls?.destroy();tile.video.pause();tile.vodChat?.destroy();}});
-  window.multiView={add,close:closeTile,automatic:()=>{manualTree=null;schedule();},get count(){return tiles.size||1;},get activeVideo(){return tiles.get(selected)?.video||video;},fullscreen:mode=>{
-    const tile=tiles.get(selected);if(mode==='video'&&tile&&!tile.primary){if(document.fullscreenElement)document.exitFullscreen();else tile.video.parentElement.requestFullscreen().catch(()=>{});}else toggleFullscreen(mode);
+  window.addEventListener('beforeunload',()=>{for(const tile of tiles.values())if(!tile.primary&&!tile.directory){tile.hls?.destroy();tile.video.pause();tile.vodChat?.destroy();}});
+  window.multiView={add,browse,closeDirectory,close:closeTile,automatic:()=>{manualTree=null;schedule();},get count(){return tiles.size||1;},get activeVideo(){return tiles.get(selected)?.video||video;},fullscreen:mode=>{
+    const tile=tiles.get(selected);if(mode==='video'&&tile?.video&&!tile.primary){if(document.fullscreenElement)document.exitFullscreen();else tile.video.parentElement.requestFullscreen().catch(()=>{});}else toggleFullscreen(mode);
   }};
 })();

@@ -66,3 +66,18 @@ test('disconnecting a player during a segment transfer leaves the server usable'
   await new Promise(resolve => setTimeout(resolve, 60));
   assert.deepEqual(await (await originalFetch(base + '/api/health')).json(), { ok: true });
 });
+
+test('live info polling validates channels, caches metadata and handles ended broadcasts without playback sources', async t => {
+  const originalFetch=globalThis.fetch;let calls=0;
+  globalThis.fetch=async()=>{calls++;return Response.json({code:200,content:{status:'CLOSE',concurrentUserCount:0,openDate:'2026-11-03 15:00:00'}});};
+  const server=createApp();await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(async()=>{globalThis.fetch=originalFetch;server.closeAllConnections();await new Promise(resolve=>server.close(resolve));});
+  const base=`http://127.0.0.1:${server.address().port}`,id='a'.repeat(32);
+  assert.equal((await originalFetch(base+'/api/live-info?id=bad')).status,400);assert.equal(calls,0);
+  const info=await (await originalFetch(base+'/api/live-info?id='+id)).json();
+  assert.equal(info.status,'CLOSE');assert.equal(info.viewers,0);assert.equal(info.openedAt,Date.parse('2026-11-03T06:00:00Z'));
+  assert.deepEqual(await (await originalFetch(base+'/api/live-info?id='+id)).json(),info);assert.equal(calls,1);
+  globalThis.fetch=async()=>Response.json({code:500,content:null});
+  assert.equal((await originalFetch(base+'/api/live-info?id='+'b'.repeat(32))).status,502);
+  assert.equal((await originalFetch(base+'/api/health')).status,200);
+});

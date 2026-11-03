@@ -86,6 +86,7 @@ async function upstream(url, headers = {}) {
 }
 export function createApp({ recorder } = {}) {
   const directoryCache=new Map();
+  const liveInfoCache=new Map();
   const sources = new Map(), ids = new Map(), vodContexts = new Map();
   function register(value, context) {
     const url = mediaURL(value);
@@ -105,6 +106,14 @@ export function createApp({ recorder } = {}) {
       const u = new URL(req.url, 'http://' + req.headers.host);
       if (req.method !== 'GET') return json(405, { error: 'GET만 지원합니다.' });
       if (u.pathname === '/api/health') return json(200, { ok: true });
+      if(u.pathname==='/api/live-info'){
+        const id=u.searchParams.get('id');if(!/^[a-f\d]{32}$/i.test(id||''))return json(400,{error:'잘못된 채널 ID입니다.'});
+        const cached=liveInfoCache.get(id);if(cached&&Date.now()-cached.time<15000)return json(200,cached.data);
+        const response=await upstream(`https://api.chzzk.naver.com/service/v3/channels/${id}/live-detail`);
+        if(!response.ok)return json(502,{error:'방송 정보를 갱신하지 못했습니다.'});
+        const result=await response.json();if(result.code!==200||!result.content)return json(502,{error:'방송 정보를 갱신하지 못했습니다.'});
+        const data=directory.liveInfo(result.content,id);liveInfoCache.set(id,{time:Date.now(),data});if(liveInfoCache.size>32)liveInfoCache.delete(liveInfoCache.keys().next().value);return json(200,data);
+      }
       if(u.pathname==='/api/lives'){
         let address;try{address=directory.directoryURL(u.searchParams.get('sort')||'viewers',u.searchParams.get('next')||'');}catch(error){return json(400,{error:error.message});}
         const cached=directoryCache.get(address);if(cached&&Date.now()-cached.time<15000)return json(200,cached.data);
@@ -187,7 +196,7 @@ export function createApp({ recorder } = {}) {
         const media = (playback?.media || []).filter(m => m.path && /hls/i.test(m.mediaId || m.protocol || m.path));
         media.sort((a, b) => Number(/LLHLS/i.test(a.mediaId)) - Number(/LLHLS/i.test(b.mediaId)));
         if (!media.length) return json(422, { error: '공개 재생 주소가 없습니다. 로그인 필요 방송이거나 API 형식이 변경됐을 수 있습니다. m3u8 직접 입력을 이용할 수 있습니다.', channelId: id });
-        return json(200, { channelId: id, title: live.liveTitle, channel: live.channel?.channelName, sources: media.map(m => ({ name: m.mediaId || 'HLS', url: register(m.path) })) });
+        return json(200, { channelId: id, title: live.liveTitle, channel: live.channel?.channelName, liveInfo:directory.liveInfo(live,id), sources: media.map(m => ({ name: m.mediaId || 'HLS', url: register(m.path) })) });
       }
       if (u.pathname.startsWith('/media/')) {
         const source = sources.get(u.pathname.slice(7));
@@ -231,6 +240,7 @@ export function createApp({ recorder } = {}) {
       files['/home.js'] = ['home.js', 'text/javascript'];
       files['/home-rules.js'] = ['home-rules.js', 'text/javascript'];
       files['/home.css'] = ['home.css', 'text/css'];
+      files['/live-info.js'] = ['live-info.js', 'text/javascript'];
       files['/caption-timeline.js'] = ['caption-timeline.js', 'text/javascript'];
       files['/caption-worklet.js'] = ['caption-worklet.js', 'text/javascript'];
       files['/assets/logo.png'] = ['assets/logo.png', 'image/png'];

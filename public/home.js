@@ -9,10 +9,13 @@
   const el=id=>document.getElementById(id);
   let settings=rules.normalize(null),rows=[],next=null,busy=false,revision=0,controller,playing=[],ready=false,saveTimer,saveRevision=0;
   let autoFailed=false,autoFrame=0,autoTarget=null;
-  const autoObserver=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.target===autoTarget&&entry.isIntersecting)&&!busy&&next&&!autoFailed&&document.body.classList.contains('home-mode'))load();});
+  const visible=()=>document.body.classList.contains('home-mode')||document.body.classList.contains('directory-docked');
+  let autoObserver;
+  function configureObserver(){autoObserver?.disconnect();autoObserver=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.target===autoTarget&&entry.isIntersecting)&&!busy&&next&&!autoFailed&&visible())load();},{root:document.body.classList.contains('directory-docked')?home:null});}
+  configureObserver();
   function observeNextRow(){
     autoObserver.disconnect();autoTarget=null;
-    if(!next||busy||autoFailed||!document.body.classList.contains('home-mode'))return;
+    if(!next||busy||autoFailed||!visible())return;
     const cards=[...el('home-grid').children];let target=el('home-load-marker');
     if(cards.length){const lastTop=cards.at(-1).offsetTop;let previousTop=lastTop;for(let i=cards.length-2;i>=0;i--)if(cards[i].offsetTop<lastTop-1){previousTop=cards[i].offsetTop;break;}target=cards.find(card=>Math.abs(card.offsetTop-previousTop)<2)||cards[0];}
     autoTarget=target;autoObserver.observe(target);
@@ -22,6 +25,9 @@
   window.addEventListener('resize',scheduleObserve);
   function show(user=false){
     if(user){startupAddressEdited=true;if(!resolved)generation++;}
+    if(resolved?.sources?.length){
+      document.body.classList.remove('home-mode');window.multiView.browse(home);el('home-back').hidden=false;el('home-back').textContent='목록 닫기';configureObserver();scheduleObserve();if(ready&&!rows.length&&!busy)load(true);return;
+    }
     if(!document.body.classList.contains('home-mode')){playing=[...document.querySelectorAll('video')].filter(v=>!v.paused);for(const media of playing)media.pause();}
     document.body.classList.add('home-mode');el('home-back').hidden=!resolved?.sources?.length;
     requestAnimationFrame(()=>{reportChatBounds();window.dispatchEvent(new Event('resize'));});
@@ -29,11 +35,13 @@
     scheduleObserve();
   }
   function hide(resume=true){
+    window.multiView.closeDirectory();
     document.body.classList.remove('home-mode');if(resume)for(const media of playing)if(media.isConnected)media.play().catch(()=>{});playing=[];
     autoObserver.disconnect();
     requestAnimationFrame(()=>{window.dispatchEvent(new Event('resize'));reportChatBounds();});
   }
   document.querySelector('.brand').addEventListener('click',event=>{if(event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;event.preventDefault();show(true);});
+  window.addEventListener('directory-dock-closed',()=>{configureObserver();el('home-back').textContent='시청 화면으로';scheduleObserve();});
   el('home-back').onclick=()=>hide();
   window.addEventListener('viewer-stream-opened',()=>hide());
   function save(){
@@ -54,6 +62,7 @@
   function exclude(item){if(!settings.blocked.some(x=>x.id===item.id))settings.blocked.push({id:item.id,name:item.name});save();renderBlocked();render();el('home-save-status').textContent=item.name+' 목록 제외 · 설정에서 해제할 수 있습니다.';}
   async function open(item,add=false){
     const address='https://chzzk.naver.com/live/'+item.id;
+    if(document.body.classList.contains('directory-docked')){await window.multiView.add(address);if(document.body.classList.contains('directory-docked')&&el('status').classList.contains('error'))el('home-status').textContent=el('status').textContent;return;}
     if(add){hide();await window.multiView.add(address);return;}
     await openStream(address);
     if(document.body.classList.contains('home-mode')&&el('status').classList.contains('error'))el('home-status').textContent=el('status').textContent;

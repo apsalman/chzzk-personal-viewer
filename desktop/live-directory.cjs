@@ -24,4 +24,13 @@ function normalizeLives(data){
   const next=cursor(data.content.page?.next);
   return {items,next:next?Buffer.from(JSON.stringify(next)).toString('base64url'):null};
 }
-module.exports={directoryURL,normalizeLives};
+function liveInfo(live,id){
+  const raw=live.concurrentUserCount,value=raw===null||raw===undefined||raw===''?NaN:Number(raw);
+  let openedAt=null;
+  if(typeof live.openDate==='string'){
+    const text=live.openDate.trim().replace(' ','T'),time=Date.parse(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?$/.test(text)?text+'+09:00':text);
+    if(Number.isFinite(time))openedAt=time;
+  }
+  return {channelId:id,viewers:Number.isFinite(value)&&value>=0?Math.floor(value):null,openedAt,status:live.status==='CLOSE'?'CLOSE':'OPEN'};
+}
+module.exports={directoryURL,normalizeLives,liveInfo};

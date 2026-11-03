@@ -37,6 +37,7 @@
     if(!path)return {...tree,ratio:Math.max(.1,Math.min(.9,ratio))};
     const branch=path[0];return branch==='a'||branch==='b'?{...tree,[branch]:resize(tree[branch],path.slice(1),ratio)}:tree;
   }
-  const api={automatic,remove,dock,rectangles,dividers,resize};
+  function replace(tree,id,replacement){if(typeof tree==='string')return tree===id?replacement:tree;return tree?{...tree,a:replace(tree.a,id,replacement),b:replace(tree.b,id,replacement)}:tree;}
+  const api={automatic,remove,dock,rectangles,dividers,resize,replace};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.MultiLayout=api;
 })(globalThis);
