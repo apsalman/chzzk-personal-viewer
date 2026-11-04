@@ -1,7 +1,8 @@
+param([string]$ElectronVersion)
 $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
-$meta = Invoke-RestMethod 'https://registry.npmjs.org/electron/latest'
-$version = $meta.version
+$appMetadata = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'package.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$version = if ($ElectronVersion) { $ElectronVersion } elseif ($appMetadata.build.electronVersion) { $appMetadata.build.electronVersion } else { (Invoke-RestMethod 'https://registry.npmjs.org/electron/latest').version }
 if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid Electron version' }
 $archiveName = "electron-v$version-win32-x64.zip"
 $cache = Join-Path $PSScriptRoot '.build-cache'
@@ -27,7 +28,6 @@ if (-not $expected -or (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Ha
 Expand-Archive -LiteralPath $archive -DestinationPath $output -Force
 Move-Item -LiteralPath (Join-Path $output 'electron.exe') -Destination (Join-Path $output 'Azzzt.exe') -Force
 & (Join-Path $PSScriptRoot 'set-app-icon.ps1') -Executable (Join-Path $output 'Azzzt.exe')
-$appMetadata = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'package.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 & (Join-Path $PSScriptRoot 'set-app-metadata.ps1') -Executable (Join-Path $output 'Azzzt.exe') -Version $appMetadata.version
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'setup-captions.ps1') -Destination $output -Force
 $appRoot = Join-Path $output 'resources\app'

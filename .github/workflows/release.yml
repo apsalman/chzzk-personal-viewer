@@ -1,0 +1,83 @@
+name: Windows release
+
+on:
+  push:
+    tags: ['v[0-9]*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing version tag to publish (for example v0.2.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-release-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.11'
+      - name: Validate release version
+        run: |
+          if ($env:RELEASE_TAG -notmatch '^v\d+\.\d+\.\d+$') { throw 'Use a stable version tag such as v0.2.0' }
+          $meta = Get-Content package.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($env:RELEASE_TAG -ne "v$($meta.version)") { throw 'Tag and package.json version must match' }
+          $tagCommit = git rev-parse "refs/tags/$env:RELEASE_TAG^{commit}"
+          if ($LASTEXITCODE -ne 0 -or $tagCommit -ne (git rev-parse HEAD)) { throw 'Checkout must match the existing version tag' }
+      - name: Install FFmpeg for integration tests
+        run: |
+          if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
+            choco install ffmpeg --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'FFmpeg installation failed' }
+          }
+      - name: Run tests
+        run: |
+          node --test
+          if ($LASTEXITCODE -ne 0) { throw 'Node tests failed' }
+          python caption-translation.test.py
+          if ($LASTEXITCODE -ne 0) { throw 'Python tests failed' }
+      - name: Build and package Windows x64
+        run: |
+          ./build-desktop.ps1
+          ./package-release.ps1
+          $hash = (Get-FileHash Azzzt-Windows-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash *Azzzt-Windows-x64.zip" | Set-Content Azzzt-Windows-x64.zip.sha256 -Encoding ascii
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $existing = gh release view $env:RELEASE_TAG --json isDraft 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            if (-not ($existing | ConvertFrom-Json).isDraft) { throw 'This version is already published; create a new version tag' }
+          } else {
+            gh release create $env:RELEASE_TAG --verify-tag --draft --title "Azzzt $env:RELEASE_TAG" --notes-file .github/release-notes.md
+            if ($LASTEXITCODE -ne 0) { throw 'Could not create release draft' }
+          }
+          gh release upload $env:RELEASE_TAG Azzzt-Windows-x64.zip Azzzt-Windows-x64.zip.sha256 --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Release asset upload failed' }
+          gh release edit $env:RELEASE_TAG --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Could not publish release' }

@@ -80,6 +80,10 @@ node --test            # 테스트 (Node.js 22 이상)
 
 기존 `dist/ChzzkViewer/`는 빌드 시 `dist/Azzzt/`로 이동하여 프로필을 유지합니다. 빌드 결과는 `dist/Azzzt/`, 배포 파일은 `Azzzt-Windows-x64.zip`입니다. 다른 PC로 옮길 때는 앱 폴더 전체를 복사하세요.
 
+## GitHub 릴리즈
+
+`package.json`의 버전을 올리고 커밋한 뒤 `git tag v0.2.1`, `git push origin v0.2.1`을 실행하면 Windows 테스트·빌드 후 ZIP과 SHA-256 파일을 Releases에 자동 배포합니다. 태그와 앱 버전은 같아야 하며, Electron 버전은 `build.electronVersion`으로 고정합니다.
+
 ## 저장 위치·참고
 
 - `profile/`: 앱 로그인·설정
