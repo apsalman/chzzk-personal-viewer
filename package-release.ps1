@@ -20,6 +20,7 @@ $appFiles = @(
     'public\assets\wordmark.svg', 'public\assets\logo.png', 'public\assets\app.ico', 'public\vendor\hls.min.js', 'public\vendor\hls.LICENSE'
 )
 $files = @()
+$appFiles += 'public\lite-source.js'
 foreach ($relative in $runtimeFiles) {
     $files += [pscustomobject]@{ Source = Join-Path $runtimeRoot $relative; Entry = 'Azzzt/' + $relative }
 }

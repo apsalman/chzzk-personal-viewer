@@ -242,6 +242,7 @@ export function createApp({ recorder } = {}) {
       files['/home.css'] = ['home.css', 'text/css'];
       files['/lite.html'] = ['lite.html', 'text/html'];
       files['/lite.js'] = ['lite.js', 'text/javascript'];
+      files['/lite-source.js'] = ['lite-source.js', 'text/javascript'];
       files['/lite.css'] = ['lite.css', 'text/css'];
       files['/lite-entry.js'] = ['lite-entry.js', 'text/javascript'];
       files['/live-info.js'] = ['live-info.js', 'text/javascript'];

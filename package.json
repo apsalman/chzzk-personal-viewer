@@ -1,7 +1,7 @@
 {
   "name": "azzzt",
   "productName": "Azzzt 아자자잣",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "main": "desktop/main.cjs",
   "build": { "electronVersion": "45.2.1" },
   "private": true,

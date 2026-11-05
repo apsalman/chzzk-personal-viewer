@@ -16,17 +16,20 @@
     catch(error){exiting=false;notify(error.message);}
   }
   async function fullscreen(){if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();}
-  function connect(){
+  async function connect(forceProxy=false){
     connecting=true;const run=++revision;player?.destroy();player=null;note.hidden=false;note.textContent='Lite 모드로 연결 중…';
     const position=state.data.kind==='vod'?state.position:null;
     media.muted=state.muted;media.volume=state.volume;media.playbackRate=state.data.kind==='vod'?state.rate:1;
     media.addEventListener('loadeddata',()=>{if(run===revision)connecting=false;},{once:true});
     media.addEventListener('loadedmetadata',()=>{if(run!==revision)return;if(position!==null)media.currentTime=Math.min(position,Math.max(0,media.duration-.5));media.playbackRate=state.data.kind==='vod'?state.rate:1;},{once:true});
+    const playbackSource=forceProxy||!window.Hls?.isSupported()?state.source:await window.litePlaybackSource(state.source,state.data);
+    if(run!==revision||exiting)return;
+    const direct=playbackSource!==state.source;
     if(window.Hls?.isSupported()){
       player=new Hls({lowLatencyMode:false,maxBufferLength:15,maxMaxBufferLength:30,maxBufferSize:20000000,backBufferLength:5,startPosition:position??-1});
-      player.on(Hls.Events.MANIFEST_PARSED,()=>{if(run!==revision)return;const index=player.levels.findIndex(level=>level.height===state.height);if(index>=0)player.currentLevel=index;if(!state.paused)media.play().catch(()=>notify('재생 버튼을 눌러 주세요.'));else note.hidden=true;});
-      let recoveries=0;player.on(Hls.Events.ERROR,(_event,error)=>{if(run!==revision||!error.fatal)return;if(error.type===Hls.ErrorTypes.MEDIA_ERROR&&recoveries++<1)player.recoverMediaError();else{player.stopLoad();notify('연결이 끊겼습니다. 우클릭 → 다시 연결을 선택하세요.');}});
-      player.loadSource(state.source);player.attachMedia(media);
+      player.on(Hls.Events.MANIFEST_PARSED,()=>{if(run!==revision)return;const index=player.levels.findIndex(level=>level.height===state.height);if(index>=0)player.currentLevel=index;if(!state.paused)media.play().catch(()=>{if(run===revision&&!exiting)notify('재생 버튼을 눌러 주세요.');});else note.hidden=true;});
+      let recoveries=0;player.on(Hls.Events.ERROR,(_event,error)=>{if(run!==revision)return;if(direct&&error.type===Hls.ErrorTypes.NETWORK_ERROR){save(true);connect(true);return;}if(!error.fatal)return;if(error.type===Hls.ErrorTypes.MEDIA_ERROR&&recoveries++<1)player.recoverMediaError();else{player.stopLoad();notify('연결이 끊겼습니다. 우클릭 → 다시 연결을 선택하세요.');}});
+      player.loadSource(playbackSource);player.attachMedia(media);
     }else if(media.canPlayType('application/vnd.apple.mpegurl')){media.src=state.source;if(!state.paused)media.play().catch(()=>notify('재생 버튼을 눌러 주세요.'));}
     else notify('이 환경에서는 영상을 재생할 수 없습니다.');
   }

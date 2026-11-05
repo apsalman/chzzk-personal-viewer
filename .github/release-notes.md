@@ -1,5 +1,7 @@
 Azzzt 아자자잣 · Windows x64
 
+Lite 모드의 공개 라이브를 CDN에서 직접 수신하여 로컬 중계 부하를 줄였습니다. 직접 연결에 실패하면 기존 중계 방식으로 자동 복귀합니다.
+
 1. `Azzzt-Windows-x64.zip`을 내려받아 전체 압축을 풉니다.
 2. `Azzzt/Azzzt.exe`를 실행합니다.
 
